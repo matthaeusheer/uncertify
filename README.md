@@ -1,4 +1,5 @@
 # ![](assets/uncertify.gif)
+[![Build Status](https://travis-ci.com/matthaeusheer/uncertify.svg?token=bUEVgaJ1xLP8HNxuqXvL&branch=master)](https://travis-ci.com/matthaeusheer/uncertify)
 
 Master Thesis: Quantifying Trust of Segmented Pathologies in Brain Imaging with little supervision.
 
