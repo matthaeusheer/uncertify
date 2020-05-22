@@ -6,6 +6,6 @@ used throughout the project.
 import os
 from pathlib import Path
 
-DATA_FOLDER_NAME = 'data'
 PROJECT_ROOT_PATH = Path(os.path.dirname(os.path.dirname(__file__)))
+DATA_FOLDER_NAME = 'data'
 DATA_DIR_PATH = PROJECT_ROOT_PATH / DATA_FOLDER_NAME
