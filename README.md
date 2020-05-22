@@ -35,16 +35,16 @@ To get a local copy up and running follow these simple example steps.
 
 ### Installation
 
-2. Clone the repo
+1. Clone the repo
 ```sh
 git clone https://github.com/matthaeusheer/uncertify.git
 ```
-3. Install python dependencies via `pipenv`
+2. Install python dependencies via `pipenv`
 ```sh
 cd uncertify
 pipenv install
 ```
-4. Active virtual environment
+3. Active virtual environment
 ```sh
 pipenv shell
 ```
