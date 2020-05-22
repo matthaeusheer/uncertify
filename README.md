@@ -27,10 +27,10 @@ To get a local copy up and running follow these simple example steps.
 
 
 ### Prerequisites
-- pyenv
-- pipenv
-- cuda
-- cuDNN
+- [pyenv](https://github.com/pyenv/pyenv) - to manage your local python versions
+- [pipenv](https://github.com/pypa/pipenv) - manage python dependencies within a virtual environment
+- [cuda](https://developer.nvidia.com/cuda-toolkit) - well, the NVIDIA stuff
+- [cuDNN](https://developer.nvidia.com/cudnn) - more NVIDIA stuff, deep learning on steroids
 
 
 ### Installation
