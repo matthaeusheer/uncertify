@@ -7,7 +7,5 @@
 # All other files & folders in local_output     #
 # are being ignored by git!                     #
 #                                               #
-# The reason this folder exists is to test      #
-# training jobs locally before submitting.      #
 #                                               #
 #################################################
