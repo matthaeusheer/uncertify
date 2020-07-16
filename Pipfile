@@ -3,13 +3,22 @@ name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
+[[source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu92"
+verify_ssl = false
+
 [dev-packages]
 pytest = "*"
+jupyterlab = "*"
+jupyter = "*"
+matplotlib = "*"
 
 [packages]
 pyyaml = "*"
-jupyterlab = "*"
-jupyter = "*"
+torch = {index = "pytorch",version = "==1.4.0"}
+torchvision = {index = "pytorch",version = "==0.5.0"}
+tensorboard = "*"
 
 [requires]
 python_version = "3.8"
