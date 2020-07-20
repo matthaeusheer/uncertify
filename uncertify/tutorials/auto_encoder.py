@@ -26,7 +26,7 @@ class AutoEncoder(torch.nn.Module):
         for dims in [encoder_hidden_dims, decoder_hidden_dims]:
             if dims is not None:
                 assert isinstance(encoder_hidden_dims, list) and len(encoder_hidden_dims) > 0, 'Must give non-empty' \
-                                                                                               'list of dimensions.'
+                                                                                        'list of dimensions.'
         # Build encoder layers
         self.encoder_layers = []
         if encoder_hidden_dims is not None:
