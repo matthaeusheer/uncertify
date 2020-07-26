@@ -5,13 +5,9 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 import numpy as np
 
+from uncertify.tutorials.datastructures import Point
+
 from typing import List, Tuple
-
-
-@dataclass
-class Point:
-    x: float
-    y: float
 
 
 @dataclass
@@ -95,7 +91,6 @@ def plot_state(clusters: List[Cluster]) -> Tuple[plt.Figure, plt.Axes]:
         ax.set_xlim([-50, 50])
         ax.set_ylim([-50, 50])
     ax.set_aspect('equal')
-
     plt.show()
     return fig, ax
 
