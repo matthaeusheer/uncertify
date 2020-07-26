@@ -19,6 +19,7 @@ pyyaml = "*"
 torch = {index = "pytorch",version = "==1.4.0"}
 torchvision = {index = "pytorch",version = "==0.5.0"}
 tensorboard = "*"
+pytorch-lightning = "*"
 
 [requires]
 python_version = "3.8"

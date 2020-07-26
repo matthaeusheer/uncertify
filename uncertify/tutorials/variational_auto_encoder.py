@@ -1,8 +1,9 @@
 """
-Example of a simple VariationalAutoEncoder implementation in PyTorch for say MNIST digit reconstruction.
+Example of a simple VariationalAutoEncoder implementation in PyTorch.
+
+NOTE: This is a raw Pytorch implementation. A Pytorch Lightning module can be found in the models folder while
+      this implementation here is only for tutorial / learning purposes.
 """
-import itertools
-from math import ceil
 
 import torch
 from torch import nn
@@ -10,11 +11,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
 import matplotlib.pyplot as plt
-import numpy as np
 
 from uncertify.common import DATA_DIR_PATH
 
-from typing import List, Tuple, TypeVar
+from typing import Tuple, TypeVar
+
+from uncertify.visualization.reconstruction import plot_vae_reconstructions, plot_vae_generations
 
 Tensor = TypeVar('torch.tensor')
 
@@ -101,10 +103,10 @@ def train_vae(model: VariationalAutoEncoder, device: torch.device, train_loader:
             if (batch_idx + 1) % (len(train_loader) // 5) == 0:
                 if sampled_z is not None:
                     samples = model._decode(sampled_z).view(-1, 28, 28).cpu().detach().numpy()
-                    fig = visualize_generated(samples)
+                    fig = plot_vae_generations(samples)
                     fig.savefig(str(DATA_DIR_PATH / 'vae_movie' / f'sampled_{fig_counter}.png'))
-                reconstruct_fig = visualize_reconstructions(model, test_loader, device, n_batches=1, max_samples=1,
-                                                            show=False)[0]
+                reconstruct_fig = plot_vae_reconstructions(model, test_loader, device, n_batches=1, max_samples=1,
+                                                           show=False)[0]
                 reconstruct_fig.savefig(str(DATA_DIR_PATH / 'vae_movie' / f'reconstruct_{fig_counter}.png'))
                 fig_counter += 1
                 print(f'Train Epoch: {epoch_idx + 1} [{batch_idx * len(batch_features)}/{len(train_loader.dataset)}] '
@@ -124,51 +126,3 @@ def train_vae(model: VariationalAutoEncoder, device: torch.device, train_loader:
     return model
 
 
-def visualize_reconstructions(trained_model: VariationalAutoEncoder, test_loader: DataLoader,
-                              device: torch.device, cmap: str = 'hot', n_batches: int = 1,
-                              max_samples: int = -1, show: bool = True) -> List[plt.Figure]:
-    """Run input images through VAE and visualize them against the reconstructed image."""
-    plt.set_cmap(cmap)
-    trained_model.eval()
-    figures = []
-    with torch.no_grad():
-        sample_counter = 0
-        for batch_features, _ in itertools.islice(test_loader, n_batches):
-            batch_features = batch_features.to(device)
-            out_features, _, _ = trained_model(batch_features)
-            for idx, (in_feature, out_feature) in enumerate(zip(batch_features, out_features)):
-                in_np = in_feature.view(28, 28).cpu().numpy()
-                out_np = out_feature.view(28, 28).cpu().numpy()
-                residual_np = np.abs(out_np - in_np)
-                fig, (original_ax, reconstruction_ax, residual_ax) = plt.subplots(1, 3)
-                original_ax.imshow(in_np, vmin=0.0, vmax=1.0)
-                reconstruction_ax.imshow(out_np, vmin=0.0, vmax=1.0)
-                residual_ax.imshow(residual_np, vmin=0.0, vmax=1.0)
-                reconstruction_ax.set_axis_off()
-                original_ax.set_axis_off()
-                residual_ax.set_axis_off()
-                plt.tight_layout(h_pad=0)
-                figures.append(fig)
-                sample_counter += 1
-                if show:
-                    plt.show()
-                if sample_counter == max_samples:
-                    break
-    return figures
-
-
-def visualize_generated(generated_samples: np.ndarray) -> plt.Figure:
-    """Samples is the tensor returned by the VAE _decode function as numpy version."""
-    images = [sample for sample in generated_samples]
-    n_imgs = len(images)
-    n_cols = 4
-    fig, axes_2d = plt.subplots(ceil(n_imgs / n_cols), n_cols, gridspec_kw={'wspace': 0, 'hspace': 0}, figsize=(8, 8))
-    for counter, img in enumerate(images):
-        row_idx = counter // n_cols
-        col_idx = counter % n_cols
-        ax = axes_2d[row_idx][col_idx]
-        ax.imshow(img)
-        ax.set_aspect('equal')
-        ax.axis('off')
-    fig.tight_layout(w_pad=0)
-    return fig

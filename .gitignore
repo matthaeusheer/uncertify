@@ -131,3 +131,4 @@ data/*
 
 # log dir
 logs/
+lightning_logs/
