@@ -1,16 +1,11 @@
 """
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
-from pathlib import Path
-
 import torch
-from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.optim.optimizer import Optimizer
 import torchvision
 import pytorch_lightning as pl
-import matplotlib.pyplot as plt
 
 from uncertify.models.encoder_decoder import Encoder, Decoder
 from uncertify.common import DATA_DIR_PATH
@@ -25,7 +20,6 @@ class VariationalAutoEncoder(pl.LightningModule):
         super().__init__()
         self._encoder = encoder
         self._decoder = decoder
-        print(self)
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
@@ -39,20 +33,16 @@ class VariationalAutoEncoder(pl.LightningModule):
         Args:
             x: raw image tensor (un-flattened)
         """
-        print(f'Forward - input shape {x.shape}')
         mu, log_var = self._encoder(x)
-        print(f'Forward - mu, logvar shapes {mu.shape} / {log_var.shape}')
         latent_code = self._reparameterize(mu, log_var)
-        print(f'Forward - latent code shape {latent_code.shape}')
-
-        return self._decoder(latent_code), mu, log_var
+        reconstruction = self._decoder(latent_code)
+        return reconstruction, mu, log_var
 
     def training_step(self, batch, batch_idx):
         """Pytorch-lightning function."""
         features, _ = batch
-        print(features.shape)
         reconstructed_batch, mu, log_var = self(features)
-        train_loss = self.loss_function(reconstructed_batch, features.view(-1, self.input_dim), mu, log_var)
+        train_loss = self.loss_function(reconstructed_batch, features, mu, log_var)
         log = {'train_loss': train_loss}
         return {'loss': train_loss, 'log': log}
 
@@ -60,7 +50,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         """Pytorch-lightning function."""
         features, _ = batch
         reconstructed_batch, mu, log_var = self(features)
-        val_loss = self.loss_function(reconstructed_batch, features.view(-1, self.input_dim), mu, log_var)
+        val_loss = self.loss_function(reconstructed_batch, features, mu, log_var)
         return {'val_loss': val_loss, 'reconstructed_batch': reconstructed_batch}
 
     def loss_function(self, x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor):
@@ -79,7 +69,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         avg_val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         x_hat = outputs[-1]['reconstructed_batch'][0]
         log = {'avg_val_loss': avg_val_loss}
-        grid = torchvision.utils.make_grid(x_hat.view(28, 28))  # remove hardcode
+        grid = torchvision.utils.make_grid(x_hat)  # remove hardcode
         self.logger.experiment.add_image('image', grid, 0)
         return {'log': log}
 
@@ -93,7 +83,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         return DataLoader(train_set,
                           batch_size=4,
                           shuffle=True,
-                          num_workers=4)
+                          num_workers=0)
 
     def val_dataloader(self) -> DataLoader:
         """Pytorch-lightning function."""
@@ -105,21 +95,27 @@ class VariationalAutoEncoder(pl.LightningModule):
         return DataLoader(val_set,
                           batch_size=4,
                           shuffle=False,
-                          num_workers=4)
+                          num_workers=0)
 
 
 def vae_loss(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tensor:
-    """Loss function of Variational Autoencoder as stated in original 'Autoencoding Variational Bayes' paper."""
-    # reconstruction_loss = F.mse_loss(x_out, x_in)  # TODO: Why does this not work?
+    """Loss function of Variational AutoEncoder as stated in original 'Autoencoding Variational Bayes' paper."""
     reconstruction_loss = F.binary_cross_entropy(x_out, x_in, reduction='sum')
     kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())  # See Appendix B of paper
     return reconstruction_loss + kld_loss
 
 
 if __name__ == '__main__':
-    trainer_kwargs = {'max_epochs': 10}
-    trainer = pl.Trainer(**trainer_kwargs, fast_dev_run=True)
-    encoder = Encoder(in_channels=3, hidden_dims=[10, 10], latent_dim=2)
-    decoder = Decoder(latent_dim=2, hidden_dims=[10, 10], img_shape=(32, 32), reverse_hidden_dims=True)
-    model = VariationalAutoEncoder(encoder, decoder)
+    latent_dims = 100
+    hidden_conv_dims = [32, 64, 128, 265, 512]
+    input_channels = 3  # depends on dataset
+    flat_conv_output_dim = 512  # run and check the dimension for the settings above
+
+    trainer_kwargs = {'max_epochs': 10, 'gpus': 1}
+    trainer = pl.Trainer(**trainer_kwargs, fast_dev_run=False)
+    encoder_net = Encoder(in_channels=input_channels, hidden_dims=hidden_conv_dims,
+                          latent_dim=latent_dims, flat_conv_output_dim=flat_conv_output_dim)
+    decoder_net = Decoder(latent_dim=latent_dims, hidden_dims=hidden_conv_dims,
+                          flat_conv_output_dim=flat_conv_output_dim, reverse_hidden_dims=True)
+    model = VariationalAutoEncoder(encoder_net, decoder_net)
     trainer.fit(model)

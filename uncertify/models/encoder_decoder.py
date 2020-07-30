@@ -14,7 +14,8 @@ DEFAULT_CONV_PADDING = 1
 
 
 class Encoder(pl.LightningModule):
-    def __init__(self, in_channels: int, hidden_dims: List[int], latent_dim: int) -> None:
+    def __init__(self, in_channels: int, hidden_dims: List[int], latent_dim: int,
+                 flat_conv_output_dim: int) -> None:
         super().__init__()
         modules = []
         for hidden_dim in hidden_dims:
@@ -26,13 +27,14 @@ class Encoder(pl.LightningModule):
                               stride=DEFAULT_CONV_STRIDE,
                               padding=DEFAULT_CONV_PADDING),
                     nn.BatchNorm2d(hidden_dim),
-                    nn.LeakyReLU())
+                    nn.LeakyReLU()
+                )
             )
             in_channels = hidden_dim
         self._encoder = nn.Sequential(*modules)
 
-        self._fully_connected_mu = nn.Linear(640, latent_dim)  # from 2D shape to single channel
-        self._fully_connected_var = nn.Linear(640, latent_dim)
+        self._fully_connected_mu = nn.Linear(flat_conv_output_dim, latent_dim)  # from 2D shape to single channel
+        self._fully_connected_var = nn.Linear(flat_conv_output_dim, latent_dim)
 
     def _encode(self, input_tensor: Tensor) -> Tuple[Tensor, Tensor]:
         """Passing the input image batch through the encoder network and returns the latent code.
@@ -42,9 +44,7 @@ class Encoder(pl.LightningModule):
             a tuple of tensors representing the latent code in form of mean and variance
         """
         result = self._encoder(input_tensor)
-        print(f'Encoder before FC: {result.shape}')
-        result = torch.flatten(result, start_dim=1)
-        print(f'Encoder before FC: {result.shape}')
+        result = torch.flatten(result, start_dim=1)  # Flatten batches of 2D images into batches of 1D arrays
         return self._fully_connected_mu(result), self._fully_connected_var(result)
 
     def forward(self, input_tensor: Tensor):
@@ -53,22 +53,23 @@ class Encoder(pl.LightningModule):
 
 class Decoder(pl.LightningModule):
     def __init__(self, latent_dim: int, hidden_dims: List[int],
-                 img_shape: Tuple[int, int], reverse_hidden_dims: bool = True) -> None:
+                 flat_conv_output_dim: int, reverse_hidden_dims: bool = True) -> None:
         super().__init__()
-        self._img_height, self._img_width = img_shape
         if reverse_hidden_dims:
             hidden_dims.reverse()
+        self._hidden_dims = hidden_dims
+        self._flat_conv_outdim_dim = flat_conv_output_dim
 
-        self._decoder_input = nn.Linear(latent_dim, hidden_dims[-1] * 4)  # go back to 2D shape
+        self._decoder_input = nn.Linear(latent_dim, hidden_dims[0] * 4)  # go back to 2D shape
         modules = []
         for layer_idx in range(len(hidden_dims) - 1):
             modules.append(
                 nn.Sequential(
                     nn.ConvTranspose2d(hidden_dims[layer_idx],
                                        hidden_dims[layer_idx + 1],
-                                       kernel_size=DEFAULT_CONV_KERNEL_SIZE,
-                                       stride=DEFAULT_CONV_STRIDE,
-                                       padding=DEFAULT_CONV_PADDING,
+                                       kernel_size=3,
+                                       stride=2,
+                                       padding=1,
                                        output_padding=1),
                     nn.BatchNorm2d(hidden_dims[layer_idx + 1]),
                     nn.LeakyReLU())
@@ -78,17 +79,19 @@ class Decoder(pl.LightningModule):
         self._final_layer = nn.Sequential(
             nn.ConvTranspose2d(hidden_dims[-1],
                                hidden_dims[-1],
-                               kernel_size=DEFAULT_CONV_KERNEL_SIZE,
-                               stride=DEFAULT_CONV_STRIDE,
-                               padding=DEFAULT_CONV_PADDING,
+                               kernel_size=3,
+                               stride=2,
+                               padding=1,
                                output_padding=1),
             nn.BatchNorm2d(hidden_dims[-1]),
             nn.LeakyReLU(),
             nn.Conv2d(hidden_dims[-1],
                       out_channels=3,
-                      kernel_size=DEFAULT_CONV_KERNEL_SIZE,
-                      padding=DEFAULT_CONV_PADDING),
-            nn.Tanh())
+                      kernel_size=3,
+                      padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Sigmoid()
+        )
 
     def _decode(self, latent_code: Tensor) -> Tensor:
         """Map latent code back into image space, i.e. perform reconstruction by generating image given some code.
@@ -98,7 +101,7 @@ class Decoder(pl.LightningModule):
             a tensor in shape [batch_size x n_channels x img_height x img_width]
         """
         result = self._decoder_input(latent_code)
-        result = result.view(-1, self._img_width, 2, 2)
+        result = result.view(-1, self._hidden_dims[0], 2, 2)
         result = self._decoder(result)
         result = self._final_layer(result)
         return result
@@ -107,11 +110,11 @@ class Decoder(pl.LightningModule):
         return self._decode(latent_code)
 
 
-def encoder_decoder_factory(latent_dim: int, img_shape: Tuple[int, int], in_channels: int,
+def encoder_decoder_factory(latent_dim: int, in_channels: int,
                             hidden_dims: List[int] = None) -> Tuple[Encoder, Decoder]:
     """Factory method yielding 'mirrored' versions of Encoder and Decoder."""
     if hidden_dims is None:
         hidden_dims = DEFAULT_HIDDEN_DIMS
     encoder = Encoder(in_channels, hidden_dims, latent_dim)
-    decoder = Decoder(latent_dim, hidden_dims, img_shape, reverse_hidden_dims=True)
+    decoder = Decoder(latent_dim, hidden_dims, reverse_hidden_dims=True)
     return encoder, decoder
