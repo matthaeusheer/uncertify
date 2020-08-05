@@ -20,6 +20,7 @@ torch = {index = "pytorch",version = "==1.4.0"}
 torchvision = {index = "pytorch",version = "==0.5.0"}
 tensorboard = "*"
 pytorch-lightning = "*"
+h5py = "*"
 
 [requires]
 python_version = "3.8"
