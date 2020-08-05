@@ -45,7 +45,8 @@ class Encoder(pl.LightningModule):
         """
         result = self._encoder(input_tensor)
         result = torch.flatten(result, start_dim=1)  # Flatten batches of 2D images into batches of 1D arrays
-        return self._fully_connected_mu(result), self._fully_connected_var(result)
+        mu, var = self._fully_connected_mu(result), self._fully_connected_var(result)
+        return mu, var
 
     def forward(self, input_tensor: Tensor):
         return self._encode(input_tensor)
@@ -53,7 +54,8 @@ class Encoder(pl.LightningModule):
 
 class Decoder(pl.LightningModule):
     def __init__(self, latent_dim: int, hidden_dims: List[int],
-                 flat_conv_output_dim: int, reverse_hidden_dims: bool = True) -> None:
+                 flat_conv_output_dim: int, output_channels: int,
+                 reverse_hidden_dims: bool = True) -> None:
         super().__init__()
         if reverse_hidden_dims:
             hidden_dims.reverse()
@@ -86,7 +88,7 @@ class Decoder(pl.LightningModule):
             nn.BatchNorm2d(hidden_dims[-1]),
             nn.LeakyReLU(),
             nn.Conv2d(hidden_dims[-1],
-                      out_channels=3,
+                      out_channels=output_channels,
                       kernel_size=3,
                       padding=1),
             nn.MaxPool2d(kernel_size=2, stride=2),
