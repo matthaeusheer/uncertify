@@ -2,7 +2,6 @@ import torch
 from torch import nn
 import pytorch_lightning as pl
 
-from .utils import conv2d_output_shape, convtransp2d_output_shape
 from .custom_types import Tensor
 
 from typing import List, Tuple
@@ -110,13 +109,3 @@ class Decoder(pl.LightningModule):
 
     def forward(self, latent_code: Tensor):
         return self._decode(latent_code)
-
-
-def encoder_decoder_factory(latent_dim: int, in_channels: int,
-                            hidden_dims: List[int] = None) -> Tuple[Encoder, Decoder]:
-    """Factory method yielding 'mirrored' versions of Encoder and Decoder."""
-    if hidden_dims is None:
-        hidden_dims = DEFAULT_HIDDEN_DIMS
-    encoder = Encoder(in_channels, hidden_dims, latent_dim)
-    decoder = Decoder(latent_dim, hidden_dims, reverse_hidden_dims=True)
-    return encoder, decoder
