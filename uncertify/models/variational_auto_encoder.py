@@ -8,9 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import torchvision
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
 
-from uncertify.models.encoder_decoder import Encoder, Decoder
 from uncertify.common import DATA_DIR_PATH
 from uncertify.models.gradient import Gradient
 from uncertify.models.custom_types import Tensor
@@ -91,56 +89,33 @@ class VariationalAutoEncoder(pl.LightningModule):
             grad_diff_grid = torchvision.utils.make_grid(grad_residuals, normalize=True)
             grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
             self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self.val_counter)
+        for name, param in self.named_parameters():
+            self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
         self.val_counter += 1
         return {'log': log}
 
     def train_dataloader(self) -> DataLoader:
         """Pytorch-lightning function."""
-        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((128, 128)),
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
         train_set = torchvision.datasets.MNIST(root=DATA_DIR_PATH / 'mnist_data',
                                                train=True,
                                                download=True,
                                                transform=transform)
         return DataLoader(train_set,
-                          batch_size=8,
+                          batch_size=128,
                           shuffle=True,
                           num_workers=0)
 
     def val_dataloader(self) -> DataLoader:
         """Pytorch-lightning function."""
-        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((128, 128)),
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
         val_set = torchvision.datasets.MNIST(root=DATA_DIR_PATH / 'mnist_data',
                                              train=False,
                                              download=True,
                                              transform=transform)
         return DataLoader(val_set,
-                          batch_size=8,
+                          batch_size=128,
                           shuffle=False,
                           num_workers=0)
-
-
-if __name__ == '__main__':
-    latent_dims = 100
-    hidden_conv_dims = [32, 64, 128, 265, 512]
-    input_channels = 1  # depends on dataset, greyscale: 1, RGB: 3
-    flat_conv_output_dim = 512  # run and check the dimension for the settings above
-
-    logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name='vae_test')
-
-    trainer_kwargs = {'logger': logger,
-                      'max_epochs': 20,
-                      'val_check_interval': 0.25,  # check (1 / value) * times per train epoch
-                      'gpus': 1,
-                      # 'precision': 16,  # needs apex installed
-                      # 'train_percent_check': 100,
-                      'fast_dev_run': False}
-    trainer = pl.Trainer(**trainer_kwargs)
-    encoder_net = Encoder(in_channels=input_channels, hidden_dims=hidden_conv_dims,
-                          latent_dim=latent_dims, flat_conv_output_dim=flat_conv_output_dim)
-    decoder_net = Decoder(latent_dim=latent_dims, hidden_dims=hidden_conv_dims,
-                          flat_conv_output_dim=flat_conv_output_dim, output_channels=input_channels,
-                          reverse_hidden_dims=True)
-    model = VariationalAutoEncoder(encoder_net, decoder_net)
-    trainer.fit(model)

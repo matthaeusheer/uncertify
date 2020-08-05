@@ -1,30 +1,6 @@
 import math
 
-import torch
-from torch import nn
-import numpy as np
-
 """Code taken from https://discuss.pytorch.org/t/utility-function-for-calculating-the-shape-of-a-conv-output/11173/7"""
-
-
-def gradient_img(batch):
-    with torch.no_grad():
-        a = np.array([[1, 0, -1],
-                      [2, 0, -2],
-                      [1, 0, -1]])
-
-        conv1 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1, bias=False)
-        grad_x = conv1(batch)
-
-        b = np.array([[1, 2, 1],
-                      [0, 0, 0],
-                      [-1, -2, -1]])
-
-        conv2 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1, bias=False)
-        grad_y = conv2(batch)
-
-        grad = torch.sqrt(torch.pow(grad_x, 2) + torch.pow(grad_y, 2))
-        return grad
 
 
 def num2tuple(num):
