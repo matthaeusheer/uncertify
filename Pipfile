@@ -21,6 +21,7 @@ torchvision = {index = "pytorch",version = "==0.5.0"}
 tensorboard = "*"
 pytorch-lightning = "*"
 h5py = "*"
+batchgenerators = "*"
 
 [requires]
 python_version = "3.8"
