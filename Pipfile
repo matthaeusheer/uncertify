@@ -22,6 +22,7 @@ tensorboard = "*"
 pytorch-lightning = "*"
 h5py = "*"
 batchgenerators = "*"
+cached-property = "*"
 
 [requires]
 python_version = "3.8"
