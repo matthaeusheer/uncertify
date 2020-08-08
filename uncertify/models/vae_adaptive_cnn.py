@@ -6,16 +6,23 @@ from .custom_types import Tensor
 
 from typing import List, Tuple
 
-DEFAULT_HIDDEN_DIMS = (32, 64, 128, 256, 512)
+# Default values work for 32x32 Greyscale input images!
+DEFAULT_HIDDEN_DIMS = [32, 64, 128, 256, 512]
+DEFAULT_LATENT_DIMS = 100
+DEFAULT_CHANNELS = 1
+DEFAULT_FLAT_CONV_OUTPUT_DIMS = 512
 DEFAULT_CONV_KERNEL_SIZE = 3
 DEFAULT_CONV_STRIDE = 2
 DEFAULT_CONV_PADDING = 1
 
 
 class Encoder(pl.LightningModule):
-    def __init__(self, in_channels: int, hidden_dims: List[int], latent_dim: int,
-                 flat_conv_output_dim: int) -> None:
+    def __init__(self, in_channels: int = DEFAULT_CHANNELS, hidden_dims: List[int] = None,
+                 latent_dim: int = DEFAULT_LATENT_DIMS,
+                 flat_conv_output_dim: int = DEFAULT_FLAT_CONV_OUTPUT_DIMS) -> None:
         super().__init__()
+        if hidden_dims is None:
+            hidden_dims = DEFAULT_HIDDEN_DIMS
         modules = []
         for hidden_dim in hidden_dims:
             modules.append(
@@ -52,10 +59,12 @@ class Encoder(pl.LightningModule):
 
 
 class Decoder(pl.LightningModule):
-    def __init__(self, latent_dim: int, hidden_dims: List[int],
-                 flat_conv_output_dim: int, output_channels: int,
+    def __init__(self, latent_dim: int = DEFAULT_LATENT_DIMS, hidden_dims: List[int] = None,
+                 flat_conv_output_dim: int = DEFAULT_FLAT_CONV_OUTPUT_DIMS, output_channels: int = DEFAULT_CHANNELS,
                  reverse_hidden_dims: bool = True) -> None:
         super().__init__()
+        if hidden_dims is None:
+            hidden_dims = DEFAULT_HIDDEN_DIMS
         if reverse_hidden_dims:
             hidden_dims.reverse()
         self._hidden_dims = hidden_dims

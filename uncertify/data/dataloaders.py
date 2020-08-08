@@ -3,7 +3,7 @@ from enum import Enum
 import torchvision
 from torch.utils.data import DataLoader
 
-from uncertify.data.transforms import Flat2ImgTransform
+from uncertify.data.transforms import NumpyFlat2ImgTransform, Numpy2PILTransform
 from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset
 from uncertify.common import DATA_DIR_PATH
 
@@ -36,7 +36,7 @@ def brats17_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
     default_location = DATA_DIR_PATH / 'brats/brats_all_val.hdf5'
     assert default_location.exists(), f'Default BraTS17 hdf5 file {default_location} does not exist!'
     if transform is None:
-        transform = torchvision.transforms.Compose([Flat2ImgTransform(new_shape=(200, 200)),
+        transform = torchvision.transforms.Compose([NumpyFlat2ImgTransform(new_shape=(200, 200)),
                                                     torchvision.transforms.ToTensor()])
     brats_val_dataset = Brats2017HDF5Dataset(hdf5_file_path=default_location, transform=transform)
     return DataLoader(brats_val_dataset, batch_size=batch_size,
@@ -47,8 +47,11 @@ def camcan_train_data_loader(batch_size: int, shuffle: bool, num_workers: int = 
     default_location = DATA_DIR_PATH / 'camcan/camcan_t2_train_set.hdf5'
     assert default_location.exists(), f'Default camcan hdf5 file {default_location} does not exist!'
     if transform is None:
-        transform = torchvision.transforms.Compose([Flat2ImgTransform(new_shape=(200, 200)),
-                                                    torchvision.transforms.ToTensor()])
+        transform = torchvision.transforms.Compose([NumpyFlat2ImgTransform(new_shape=(200, 200)),
+                                                    Numpy2PILTransform(),
+                                                    torchvision.transforms.Resize((128, 128)),
+                                                    torchvision.transforms.ToTensor(),
+                                                    torchvision.transforms.Normalize([0.0], [1.0])])
     camcan_train_dataset = CamCanHDF5Dataset(hdf5_file_path=default_location, transform=transform)
     camcan_train_dataloader = DataLoader(camcan_train_dataset, batch_size=batch_size,
                                          shuffle=shuffle, num_workers=num_workers)
@@ -59,8 +62,11 @@ def camcan_val_data_loader(batch_size: int, num_workers: int = 0, transform: Any
     default_location = DATA_DIR_PATH / 'camcan/camcan_t2_val_set.hdf5'
     assert default_location.exists(), f'Default camcan hdf5 file {default_location} does not exist!'
     if transform is None:
-        transform = torchvision.transforms.Compose([Flat2ImgTransform(new_shape=(200, 200)),
-                                                    torchvision.transforms.ToTensor()])
+        transform = torchvision.transforms.Compose([NumpyFlat2ImgTransform(new_shape=(200, 200)),
+                                                    Numpy2PILTransform(),
+                                                    torchvision.transforms.Resize((128, 128)),
+                                                    torchvision.transforms.ToTensor(),
+                                                    torchvision.transforms.Normalize([0.0], [1.0])])
     camcan_val_dataset = CamCanHDF5Dataset(hdf5_file_path=default_location, transform=transform)
     camcan_val_dataloader = DataLoader(camcan_val_dataset, batch_size=batch_size,
                                        shuffle=False, num_workers=num_workers)
@@ -69,7 +75,8 @@ def camcan_val_data_loader(batch_size: int, num_workers: int = 0, transform: Any
 
 def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0, transform: Any = None) -> DataLoader:
     if transform is None:
-        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
+                                                    torchvision.transforms.ToTensor()])
     train_set = torchvision.datasets.MNIST(root=DATA_DIR_PATH / 'mnist_data',
                                            train=True,
                                            download=True,
@@ -82,7 +89,8 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
 
 def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any = None) -> DataLoader:
     if transform is None:
-        transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
+                                                    torchvision.transforms.ToTensor()])
     val_set = torchvision.datasets.MNIST(root=DATA_DIR_PATH / 'mnist_data',
                                          train=False,
                                          download=True,

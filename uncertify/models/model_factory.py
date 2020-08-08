@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from uncertify.models.vanilla_cnn_vae import Encoder, Decoder, DEFAULT_HIDDEN_DIMS
+from uncertify.models.vae_adaptive_cnn import Encoder, Decoder, DEFAULT_HIDDEN_DIMS
 
 
 def vanilla_encoder_decoder_factory(latent_dims: int, in_channels: int, flat_conv_output_dim: int,

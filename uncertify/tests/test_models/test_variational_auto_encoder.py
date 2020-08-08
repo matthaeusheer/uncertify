@@ -1,6 +1,6 @@
-from uncertify.models.vanilla_cnn_vae import Decoder, Encoder
+from uncertify.models.vae_adaptive_cnn import Decoder, Encoder
 from uncertify.models.model_factory import vanilla_encoder_decoder_factory
-from uncertify.models.variational_auto_encoder import VariationalAutoEncoder
+from uncertify.models.vae import VariationalAutoEncoder
 
 
 def test_encoder_setup() -> None:
