@@ -9,10 +9,9 @@ from uncertify.models.custom_types import Tensor
 from typing import Any, Tuple
 
 
-ALLOWED_SUBSETS = ['train', 'val', 'test']
+class HDF5Dataset(Dataset):
+    """Serves as a base class for BraTS2017 and CamCan datasets which come in HDF5 format."""
 
-
-class Brats2017HDF5Dataset(Dataset):
     def __init__(self, hdf5_file_path: Path, transform: Any = None) -> None:
         self._h5py_file = h5py.File(hdf5_file_path, 'r')
         self._transform = transform
@@ -25,6 +24,8 @@ class Brats2017HDF5Dataset(Dataset):
     def __len__(self) -> int:
         return self.dataset_shape[0]
 
+
+class Brats2017HDF5Dataset(HDF5Dataset):
     def __getitem__(self, idx) -> Tensor:
         scan_sample = self._h5py_file['Scan'][idx]
         seg_sample = self._h5py_file['Seg'][idx]
@@ -32,3 +33,11 @@ class Brats2017HDF5Dataset(Dataset):
             scan_sample = self._transform(scan_sample)
             seg_sample = self._transform(seg_sample)
         return {'scan': scan_sample, 'seg': seg_sample}
+
+
+class CamCanHDF5Dataset(HDF5Dataset):
+    def __getitem__(self, idx) -> Tensor:
+        scan_sample = self._h5py_file['Scan'][idx]
+        if self._transform is not None:
+            scan_sample = self._transform(scan_sample)
+        return {'scan': scan_sample}
