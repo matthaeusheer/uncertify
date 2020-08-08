@@ -26,7 +26,7 @@ class HDF5Dataset(Dataset):
 
 
 class Brats2017HDF5Dataset(HDF5Dataset):
-    def __getitem__(self, idx) -> Tensor:
+    def __getitem__(self, idx) -> dict:
         scan_sample = self._h5py_file['Scan'][idx]
         seg_sample = self._h5py_file['Seg'][idx]
         if self._transform is not None:
@@ -36,7 +36,7 @@ class Brats2017HDF5Dataset(HDF5Dataset):
 
 
 class CamCanHDF5Dataset(HDF5Dataset):
-    def __getitem__(self, idx) -> Tensor:
+    def __getitem__(self, idx) -> dict:
         scan_sample = self._h5py_file['Scan'][idx]
         if self._transform is not None:
             scan_sample = self._transform(scan_sample)

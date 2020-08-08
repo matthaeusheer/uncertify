@@ -7,10 +7,15 @@ from apex import amp
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
+import torchvision
+from torchvision.transforms.transforms import Compose
+from pytorch_lightning.callbacks import EarlyStopping
 
 import add_uncertify_to_path  # makes sure we can use the uncertify library
-from uncertify.models.variational_auto_encoder import VariationalAutoEncoder
+from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.model_factory import vanilla_encoder_decoder_factory
+from uncertify.data.dataloaders import dataloader_factory, DatasetType
+from uncertify.data.transforms import NumpyFlat2ImgTransform, Numpy2PILTransform
 from uncertify.log import setup_logging
 from uncertify.common import DATA_DIR_PATH
 
@@ -33,25 +38,30 @@ def main(args: argparse.Namespace) -> None:
     hidden_conv_channels = [32, 64, 128, 265, 512]
     input_channels = 1  # depends on dataset, greyscale: 1, RGB: 3
     flat_conv_output_dim = 512  # run and check the dimension for the settings above
-
-    logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name='vanilla_cnn_vae')
-
-    trainer_kwargs = {'logger': logger,
-                      'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
-                      'max_epochs': 20,
-                      'val_check_interval': 0.25,  # check (1 / value) * times per train epoch
-                      'gpus': 1,
-                      'limit_train_batches': 0.1,
-                      'limit_val_batches': 0.1,
-                      'fast_dev_run': False}
-    trainer = pl.Trainer(**trainer_kwargs)
     encoder, decoder = vanilla_encoder_decoder_factory(latent_dims=latent_dims,
                                                        in_channels=input_channels,
                                                        hidden_conv_channels=hidden_conv_channels,
                                                        flat_conv_output_dim=flat_conv_output_dim)
-
     model = VariationalAutoEncoder(encoder, decoder)
-    trainer.fit(model)
+
+    logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name='vanilla_cnn_vae')
+    camcan_brats_transform = Compose([NumpyFlat2ImgTransform(new_shape=(200, 200)),
+                                      Numpy2PILTransform(),
+                                      torchvision.transforms.Resize((128, 128)),
+                                      torchvision.transforms.ToTensor()])
+    train_dataloader, val_dataloader = dataloader_factory(DatasetType.CAMCAN, batch_size=4,
+                                                          transform=camcan_brats_transform)
+    trainer_kwargs = {'logger': logger,
+                      'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
+                      'max_epochs': 20,
+                      'val_check_interval': 0.1,  # check (1 / value) * times per train epoch
+                      'gpus': 1,
+                      # 'limit_train_batches': 0.1,
+                      # 'limit_val_batches': 0.1,
+                      'fast_dev_run': True}
+    trainer = pl.Trainer(**trainer_kwargs)
+
+    trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
 
 
 if __name__ == '__main__':
