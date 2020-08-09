@@ -2,18 +2,44 @@ import itertools
 from math import ceil
 from typing import List
 
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
+import torchvision
 from torch.utils.data import DataLoader
 
-from uncertify.tutorials.variational_auto_encoder import VariationalAutoEncoder
+from uncertify.visualization.grid import imshow_grid
+from uncertify.utils.custom_types import Tensor
+from uncertify.utils.tensor_ops import normalize_to_0_1
 
 
-def plot_vae_reconstructions(trained_model: VariationalAutoEncoder, data_loader: DataLoader,
+from typing import Generator, Dict
+
+
+def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str, Tensor], None, None],
+                                             plot_n_batches: int = 3, **kwargs) -> None:
+    """Plot the scan and reconstruction batches."""
+    with torch.no_grad():
+        for batch in itertools.islice(batch_generator, plot_n_batches):
+            scan = normalize_to_0_1(batch['scan'])
+            reconstruction = normalize_to_0_1(batch['rec'])
+            residual = normalize_to_0_1(batch['res'])
+            if 'seg' in batch.keys():
+                seg = batch['seg']
+                stacked = torch.cat((scan, seg, reconstruction, residual), dim=2)
+            else:
+                stacked = torch.cat((scan, reconstruction, residual), dim=2)
+            grid = torchvision.utils.make_grid(stacked)
+            imshow_grid(grid, **kwargs)
+
+
+def plot_vae_reconstructions(trained_model, data_loader: DataLoader,
                              device: torch.device, colormap: str = 'hot', n_batches: int = 1,
                              max_samples: int = -1, show: bool = True) -> List[plt.Figure]:
     """Run input images through VAE and visualize them against the reconstructed image.
+
+    NOTE: This function was designed for plain pytorch models before the pytorch_lightning times!
+
     Args:
         trained_model: a trained pytorch model
         data_loader: a pytorch DataLoader
@@ -56,6 +82,9 @@ def plot_vae_reconstructions(trained_model: VariationalAutoEncoder, data_loader:
 
 def plot_vae_generations(generated_samples: np.ndarray) -> plt.Figure:
     """Visualize generated samples from the variational autoencoder.
+
+    NOTE: This function was designed for plain pytorch models before the pytorch_lightning times!
+
     Args:
         generated_samples: numpy version of a generated image (e.g. returned by the VEA _decode function)
     # TODO(matthaeusheer): This function is actually more general since it only plots images, rename appropriately

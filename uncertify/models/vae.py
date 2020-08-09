@@ -32,6 +32,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._train_steps = 0
         self.val_counter = 0
         self._train_step_counter = 0
+        self.save_hyperparameters('decoder', 'encoder', 'get_batch_fn')
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Feed forward computation.
@@ -78,7 +79,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         losses = {'avg_val_loss': avg_val_loss,
                   'avg_val_kld_loss': avg_val_kld_loss,
                   'avg_val_recon_loss': avg_val_recon_loss}
-        self.logger.experiment.add_scalars('avg_losses', losses, global_step=self._train_step_counter)
+        self.logger.experiment.add_scalars('avg_val_losses', losses, global_step=self._train_step_counter)
 
         # Sample batches from from validation steps and visualize
         np.random.seed(0)  # Make sure we always use the same samples for visualization

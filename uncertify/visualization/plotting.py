@@ -43,8 +43,9 @@ def imshow(img: np.ndarray, axis: str = 'on', ax: plt.Axes = None, **kwargs) -> 
     ax.axis(axis)
 
     cmap = kwargs['cmap'] if 'cmap' in kwargs else 'hot'
-    if len(img.shape) == 2:  # Only grey scale values
-        ax.imshow(img, cmap=cmap)
-    else:
-        ax.imshow(img, cmap=cmap)
+    imshow_kwargs = {}
+    for key in ['vmin', 'vmax']:
+        if key in kwargs:
+            imshow_kwargs[key] = kwargs.get(key)
+    ax.imshow(img, cmap=cmap, vmin=100)
     return fig, ax

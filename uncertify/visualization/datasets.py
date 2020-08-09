@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
+from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.visualization.grid import imshow_grid
 
 LOG = logging.getLogger(__name__)
