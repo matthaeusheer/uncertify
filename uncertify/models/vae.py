@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
 
 from uncertify.models.gradient import Gradient
-from uncertify.models.custom_types import Tensor
+from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict, Callable
 

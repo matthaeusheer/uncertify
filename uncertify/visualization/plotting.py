@@ -1,6 +1,5 @@
 """
 Some functionality to quickly set up matplotlib figures and plot images (numpy.ndarray).
-Works for OpenCV based color spaces (BGR) as well.
 """
 import numpy as np
 import matplotlib.pyplot as plt

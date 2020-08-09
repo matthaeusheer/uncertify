@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import pytorch_lightning as pl
 
-from uncertify.models.custom_types import Tensor
+from uncertify.utils.custom_types import Tensor
 
 
 class Conv2DBlock(nn.Module):

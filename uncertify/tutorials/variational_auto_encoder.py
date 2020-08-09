@@ -1,5 +1,5 @@
 """
-Example of a simple VariationalAutoEncoder implementation in PyTorch.
+Example of a simple VariationalAutoEncoder implementation in plain PyTorch.
 
 NOTE: This is a raw Pytorch implementation. A Pytorch Lightning module can be found in the models folder while
       this implementation here is only for tutorial / learning purposes.
@@ -13,12 +13,11 @@ from torch.optim.optimizer import Optimizer
 import matplotlib.pyplot as plt
 
 from uncertify.common import DATA_DIR_PATH
+from uncertify.utils.custom_types import Tensor
 
-from typing import Tuple, TypeVar
+from typing import Tuple
 
 from uncertify.visualization.reconstruction import plot_vae_reconstructions, plot_vae_generations
-
-Tensor = TypeVar('torch.tensor')
 
 
 class VariationalAutoEncoder(torch.nn.Module):

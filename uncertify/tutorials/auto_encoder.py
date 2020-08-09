@@ -1,5 +1,5 @@
 """
-Example of a simple AutoEncoder implementation in PyTorch for MNIST digit reconstruction.
+Example of a simple AutoEncoder implementation in PyTorch.
 """
 
 import torch

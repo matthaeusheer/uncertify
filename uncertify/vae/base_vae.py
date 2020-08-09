@@ -2,9 +2,12 @@ from abc import ABC, abstractmethod
 
 from torch import nn
 
-from uncertify.models.custom_types import Tensor
+from uncertify.utils.custom_types import Tensor
 
 from typing import List, Any
+
+
+# TODO(matthaeus): This will potentially serve as a VAE base starting point for all VAEs. Currently unused.
 
 
 class BaseVAE(nn.Module, ABC):

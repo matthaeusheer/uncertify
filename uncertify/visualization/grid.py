@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from uncertify.visualization.plotting import imshow, setup_plt_figure
-from uncertify.models.custom_types import Tensor
+from uncertify.utils.custom_types import Tensor
 
 
 def imshow_grid(grid: Tensor, one_channel: bool = False, plt_show: bool = True, **plt_kwargs) -> None:
