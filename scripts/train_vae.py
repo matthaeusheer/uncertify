@@ -13,7 +13,9 @@ from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.vae_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.models.vae_adaptive_cnn import Encoder, Decoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
-from uncertify.data.transforms import Numpy2PILTransform, NumpyFlat2ImgTransform, NumpyNormalizeTransform
+from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform, \
+    NumpyNormalize01Transform, NumpyNormalizeTransform
+from uncertify.data.dict_transforms import *
 from uncertify.log import setup_logging
 from uncertify.common import DATA_DIR_PATH
 
@@ -70,12 +72,12 @@ def main(args: argparse.Namespace) -> None:
             return batch_input[0]
 
     elif args.dataset == 'camcan':
-        transform = Compose([NumpyFlat2ImgTransform(new_shape=(200, 200)),
-                             NumpyNormalizeTransform(),
-                             Numpy2PILTransform(),
-                             torchvision.transforms.Resize((128, 128)),
-                             torchvision.transforms.ToTensor(),
-                             torchvision.transforms.Normalize(mean=[0.0], std=[1.0])])
+        transform = Compose([
+            NumpyReshapeTransform((200, 200)),
+            Numpy2PILTransform(),
+            torchvision.transforms.Resize((128, 128)),
+            torchvision.transforms.ToTensor()
+        ])
         dataset_type = DatasetType.CAMCAN
 
         def get_batch_fn(batch_input):
