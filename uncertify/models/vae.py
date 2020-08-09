@@ -3,7 +3,6 @@ A Variational AutoEncoder model implemented using pytorch lightning.
 """
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch import nn
 import torchvision
 import pytorch_lightning as pl
@@ -103,10 +102,11 @@ class VariationalAutoEncoder(pl.LightningModule):
         Caution:
             This function returns a tuple of the individual loss terms for easy logging. Need to add them up wen used.
         """
+        kld_factor = 1  #
         reconstruction_loss = nn.BCEWithLogitsLoss(reduction='sum')(x_in, x_out)
-        kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())  # See Appendix B of paper
+        kld_loss = kld_factor * (-0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp()))  # See Appendix B of paper
         return reconstruction_loss, kld_loss
 
     def configure_optimizers(self) -> Optimizer:
         """Pytorch-lightning function."""
-        return torch.optim.Adam(self.parameters(), lr=1e-4)
+        return torch.optim.Adam(self.parameters(), lr=1e-3)

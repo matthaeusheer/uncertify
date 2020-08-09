@@ -4,8 +4,6 @@ import h5py
 from cached_property import cached_property
 from torch.utils.data import Dataset
 
-from uncertify.models.custom_types import Tensor
-
 from typing import Any, Tuple
 
 
