@@ -100,7 +100,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self.val_counter += 1
 
     @staticmethod
-    def loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def old_loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Loss function of Variational Autoencoder as stated in original 'Autoencoding Variational Bayes' paper.
         Caution:
             This function returns a tuple of the individual loss terms for easy logging. Need to add them up wen used.
@@ -113,7 +113,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         return total_loss, reconstruction_loss, kld
 
     @staticmethod
-    def zimmerer_loss_function(reconstruction, observation, mu, log_std, kld_multiplier=1.0):
+    def loss_function(reconstruction, observation, mu, log_std, kld_multiplier=1.0):
         # p(x|z)
         rec_dist = dist.Normal(reconstruction, 1.0)
         log_p_x_z = rec_dist.log_prob(observation)
