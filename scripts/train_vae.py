@@ -10,7 +10,7 @@ from torchvision.transforms.transforms import Compose
 
 import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
-from uncertify.models.vae_baur2020 import BaurEncoder, BaurDecoder
+from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.models.vae_adaptive_cnn import Encoder, Decoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform, \
