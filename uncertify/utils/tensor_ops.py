@@ -1,3 +1,6 @@
+import math
+
+import scipy.stats
 import torch
 
 from uncertify.utils.custom_types import Tensor
@@ -15,3 +18,14 @@ def get_mean_and_std(tensor: Tensor) -> Tensor:
 
 def get_min_and_max(tensor: Tensor) -> Tensor:
     return torch.min(tensor), torch.max(tensor)
+
+
+def print_scipy_stats_description(description_result: scipy.stats.stats.DescribeResult,
+                                  name: str = None, column_spacer: int = 25) -> None:
+    name_part = f'Name: {name}' if name is not None else ''
+    min_part = f'min: {description_result.minmax[0]:.2f}'
+    max_part = f'max: {description_result.minmax[1]:.2f}'
+    mean_part = f'mean: {description_result.mean:.2f}'
+    std_part = f'std: {math.sqrt(description_result.variance):.2f}'
+
+    print(f''.join([f'{part:{column_spacer}}' for part in [name_part, min_part, max_part, mean_part, std_part]]))

@@ -1,7 +1,9 @@
+from pathlib import Path
 import itertools
 from math import ceil
 from typing import List
 
+import scipy.stats
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
@@ -11,27 +13,54 @@ from torch.utils.data import DataLoader
 from uncertify.visualization.grid import imshow_grid
 from uncertify.utils.custom_types import Tensor
 from uncertify.utils.tensor_ops import normalize_to_0_1
-
+from uncertify.utils.tensor_ops import print_scipy_stats_description
+from uncertify.deploy import yield_reconstructed_batches
 
 from typing import Generator, Dict
 
 
 def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str, Tensor], None, None],
-                                             plot_n_batches: int = 3, **kwargs) -> None:
-    """Plot the scan and reconstruction batches."""
+                                             plot_n_batches: int = 3, save_dir_path: Path = None, **kwargs) -> None:
+    """Plot the scan and reconstruction batches. Horizontally aligned are the samples from one batch.
+    Vertically aligned are input image, ground truth segmentation, reconstruction, residual image, residual with
+    applied threshold, ground truth and predicted segmentation in same image.
+    Args:
+        batch_generator: a PyTorch DataLoader as defined in the uncertify dataloaders module
+        plot_n_batches: limit plotting to this amount of batches
+        save_dir_path: path to directory in which to store the resulting plots - will be created if not existent
+        kwargs: additional keyword arguments for plotting functions
+    """
+    if save_dir_path is not None:
+        save_dir_path.mkdir(exist_ok=True)
     with torch.no_grad():
-        for batch in itertools.islice(batch_generator, plot_n_batches):
+        for batch_idx, batch in enumerate(itertools.islice(batch_generator, plot_n_batches)):
             scan = normalize_to_0_1(batch['scan'])
             reconstruction = normalize_to_0_1(batch['rec'])
             residual = normalize_to_0_1(batch['res'])
+            thresholded = normalize_to_0_1(batch['thresh'])
             if 'seg' in batch.keys():
-                seg = batch['seg']
-                stacked = torch.cat((scan, seg, reconstruction, residual), dim=2)
+                seg = normalize_to_0_1(batch['seg'])
+                stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)
             else:
-                stacked = torch.cat((scan, reconstruction, residual), dim=2)
-            grid = torchvision.utils.make_grid(stacked)
-            imshow_grid(grid, **kwargs)
+                stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)
+            grid = torchvision.utils.make_grid(stacked, padding=0)
+            describe = scipy.stats.describe(grid.numpy().flatten())
+            print_scipy_stats_description(describe)
+            fig, ax = imshow_grid(grid, one_channel=True, **kwargs)
+            ax.set_axis_off()
+            if save_dir_path is not None:
+                img_file_name = f'batch_{batch_idx}.png'
+                fig.savefig(save_dir_path / img_file_name, bbox_inches='tight', pad_inches=0)
 
+
+def plot_pixel_value_histogram(batch_generator: Generator[Dict[str, Tensor], None, None],
+                               consider_n_batches: int = 10) -> None:
+
+    with torch.no_grad():
+        for batch_idx, output_batch in enumerate(itertools.islice(batch_generator, consider_n_batches)):
+            pass
+
+# ----- DEPRECATED FUNCTIONS BELOW ----- #
 
 def plot_vae_reconstructions(trained_model, data_loader: DataLoader,
                              device: torch.device, colormap: str = 'hot', n_batches: int = 1,

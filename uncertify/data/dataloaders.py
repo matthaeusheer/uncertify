@@ -1,4 +1,5 @@
 from enum import Enum
+import logging
 
 import torchvision
 from torch.utils.data import DataLoader
@@ -8,6 +9,8 @@ from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Any, Optional
+
+LOG = logging.getLogger(__name__)
 
 
 class DatasetType(Enum):
@@ -52,11 +55,13 @@ def brats17_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                       shuffle=shuffle, num_workers=num_workers)
 
 
-def camcan_data_loader(mode: str, batch_size: int, shuffle_train: bool,
+def camcan_data_loader(mode: str, batch_size: int, shuffle: bool,
                        num_workers: int = 0, transform: Any = None) -> DataLoader:
     assert mode in {'train', 'val'}, f'Wrong mode.'
     if mode == 'val':
         default_location = DATA_DIR_PATH / 'camcan/camcan_t2_val_set.hdf5'
+        if shuffle:
+            LOG.warning(f'Attention! Using shuffle on CamCAN validation dataset!')
     elif mode == 'train':
         default_location = DATA_DIR_PATH / 'camcan/camcan_t2_train_set.hdf5'
     else:
@@ -66,7 +71,7 @@ def camcan_data_loader(mode: str, batch_size: int, shuffle_train: bool,
         transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
     camcan_dataset = CamCanHDF5Dataset(hdf5_file_path=default_location, transform=transform)
     camcan_dataloader = DataLoader(camcan_dataset, batch_size=batch_size,
-                                   shuffle=shuffle_train if mode == 'train' else False, num_workers=num_workers)
+                                   shuffle=shuffle, num_workers=num_workers)
     return camcan_dataloader
 
 
