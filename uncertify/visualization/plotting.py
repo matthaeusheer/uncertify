@@ -24,7 +24,7 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
     if 'aspect' in kwargs:
         ax.set_aspect(kwargs.get('aspect'))
     else:
-        ax.set_aspect('equal')
+        ax.set_aspect('auto')
     if 'axis' in kwargs:
         ax.axis(kwargs.get('axis'))
     return fig, ax
