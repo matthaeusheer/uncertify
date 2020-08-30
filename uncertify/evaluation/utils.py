@@ -8,3 +8,7 @@ def threshold_batch_to_one_zero(tensor: Tensor, threshold: float) -> Tensor:
     zeros = torch.zeros_like(tensor)
     ones = torch.ones_like(tensor)
     return torch.where(tensor > threshold, ones, zeros)
+
+
+def golden_section_search(objective, interval, tolerance):
+    ...

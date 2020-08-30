@@ -3,6 +3,22 @@ import numpy as np
 from typing import Tuple
 
 
+def true_positives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
+    return np.sum(np.logical_and(prediction == 1, ground_truth == 1))
+
+
+def false_positives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
+    return np.sum(np.logical_and(prediction == 1, ground_truth == 0))
+
+
+def true_negatives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
+    return np.sum(np.logical_and(prediction == 0, ground_truth == 0))
+
+
+def false_negatives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
+    return np.sum(np.logical_and(prediction == 0, ground_truth == 1))
+
+
 def intersection_over_union(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
     predicted_pixels = np.sum(prediction.flatten())
     ground_truth_pixels = np.sum(ground_truth.flatten())
@@ -22,32 +38,29 @@ def dice(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
 
 def confusion_matrix(prediction: np.ndarray, ground_truth: np.ndarray) -> Tuple[float, float, float, float]:
     """Calculate the entries of a binary confusion matrix."""
-    true_positives = float(np.sum(np.multiply(prediction.flatten(), ground_truth.flatten())))
-    false_positives = float(np.sum(np.multiply(prediction.flatten(), np.invert(ground_truth.flatten()))))
-    false_negatives = float(np.sum(np.multiply(np.invert(prediction.flatten()), ground_truth.flatten())))
-    true_negatives = float(np.sum(np.multiply(np.invert(prediction.flatten()), np.invert(ground_truth.flatten()))))
-    return true_positives, false_positives, true_negatives, false_negatives
+    return true_positives(prediction, ground_truth), false_positives(prediction, ground_truth), \
+           true_negatives(prediction, ground_truth), false_negatives(prediction, ground_truth)
 
 
 def true_positive_rate(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
     """A.k.a. recall or sensitivity. From the actual positives, how many did I classify as positive?"""
-    true_positives = np.sum(np.multiply(prediction.flatten(), ground_truth.flatten()))
-    false_negatives = np.sum(np.multiply(np.invert(prediction.flatten()), ground_truth.flatten()))
-    return true_positives / (true_positives + false_negatives)
+    tp = true_positives(prediction, ground_truth)
+    fn = false_negatives(prediction, ground_truth)
+    return tp / (tp + fn)
 
 
 def false_positive_rate(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
     """A.k.a. fall-out or 1-specificity. From the actual negatives, how many did I falsely classified as positive?"""
-    true_positives = np.sum(np.multiply(prediction.flatten(), ground_truth.flatten()))
-    false_positives = np.sum(np.multiply(prediction.flatten(), np.invert(ground_truth.flatten())))
-    return false_positives / (false_positives + true_positives)
+    fp = false_positives(prediction, ground_truth)
+    tn = true_negatives(prediction, ground_truth)
+    return fp / (fp + tn)
 
 
 def precision(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
     """From the ones that I classified as positive, how many are actually positive?"""
-    true_positives = np.sum(np.multiply(prediction.flatten(), ground_truth.flatten()))
-    false_positives = np.sum(np.multiply(prediction.flatten(), np.invert(ground_truth.flatten())))
-    return true_positives / (true_positives + false_positives)
+    tp = true_positives(prediction, ground_truth)
+    fp = false_positives(prediction, ground_truth)
+    return tp / (tp + fp)
 
 
 def recall(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
