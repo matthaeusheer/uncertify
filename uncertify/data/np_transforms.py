@@ -63,10 +63,10 @@ class NumpyNormalize01Transform(NumpyTransform):
 
 def normalize_2d_array(input_array: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     """Normalizes a given input array to zero mean and unit variance. When mask is given, only consider those values."""
-    assert input_array.shape == mask.shape, f'Input and mask need to have same shape: ' \
-                                            f'{input_array.shape} != {mask.shape}'
-    assert mask.dtype == bool, f'Mask needs to be boolean. Given: {mask.dtype}'
     if mask is not None:
+        assert input_array.shape == mask.shape, f'Input and mask need to have same shape: ' \
+                                                f'{input_array.shape} != {mask.shape}'
+        assert mask.dtype == bool, f'Mask needs to be boolean. Given: {mask.dtype}'
         relevant_values = input_array[mask]  # gives back 1D array of values where mask has 'True' entry
     else:
         relevant_values = input_array
