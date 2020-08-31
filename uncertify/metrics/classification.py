@@ -36,10 +36,13 @@ def dice(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
     return dice_score
 
 
-def confusion_matrix(prediction: np.ndarray, ground_truth: np.ndarray) -> Tuple[float, float, float, float]:
+def confusion_matrix(prediction: np.ndarray, ground_truth: np.ndarray) -> np.ndarray:
     """Calculate the entries of a binary confusion matrix."""
-    return true_positives(prediction, ground_truth), false_positives(prediction, ground_truth), \
-           true_negatives(prediction, ground_truth), false_negatives(prediction, ground_truth)
+    tp = true_positives(prediction, ground_truth)
+    fp = false_positives(prediction, ground_truth)
+    tn = true_negatives(prediction, ground_truth)
+    fn = false_negatives(prediction, ground_truth)
+    return np.ndarray([[tp, fp], [tn, fn]])
 
 
 def true_positive_rate(prediction: np.ndarray, ground_truth: np.ndarray) -> float:

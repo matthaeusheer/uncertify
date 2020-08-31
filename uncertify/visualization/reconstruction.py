@@ -45,7 +45,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str
                 stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)
             grid = torchvision.utils.make_grid(stacked, padding=0)
             describe = scipy.stats.describe(grid.numpy().flatten())
-            print_scipy_stats_description(describe)
+            print_scipy_stats_description(describe, 'normalized_grid')
             fig, ax = imshow_grid(grid, one_channel=True, **kwargs)
             ax.set_axis_off()
             if save_dir_path is not None:
@@ -55,10 +55,10 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str
 
 def plot_pixel_value_histogram(batch_generator: Generator[Dict[str, Tensor], None, None],
                                consider_n_batches: int = 10) -> None:
-
     with torch.no_grad():
         for batch_idx, output_batch in enumerate(itertools.islice(batch_generator, consider_n_batches)):
             pass
+
 
 # ----- DEPRECATED FUNCTIONS BELOW ----- #
 

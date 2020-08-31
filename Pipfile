@@ -25,6 +25,8 @@ batchgenerators = "*"
 cached-property = "*"
 seaborn = "*"
 tqdm = "*"
+install = "*"
+scikit-plot = "*"
 
 [requires]
 python_version = "3.8"
