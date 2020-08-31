@@ -98,6 +98,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         for name, param in self.named_parameters():
             self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
         self.val_counter += 1
+        return {}
 
     @staticmethod
     def old_loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tuple[Tensor, Tensor, Tensor]:

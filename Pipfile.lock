@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "9f46ffaf38f8320e5f35a86fa2b081da50694a3dc58b43af0458389fa2614326"
+            "sha256": "130ace9a25605592f5b4f1d0c87a043b1195478858ccf50ac56c03eab616569c"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -197,6 +197,14 @@
                 "sha256:52ddbaeca2dccf53ba2d6dec5676ca7bc3b2403ef8b37f7da78b7654bb3e10f0"
             ],
             "version": "==2.9.0"
+        },
+        "install": {
+            "hashes": [
+                "sha256:d6d927c47b82f0183557830b98dcc36f3520489c66c3a2eda0c898b718e393b2",
+                "sha256:fe75019b45eb1febc9232f452861e7693efeadd554f18cdc4ff647f29349b145"
+            ],
+            "index": "pypi",
+            "version": "==1.3.3"
         },
         "joblib": {
             "hashes": [
@@ -544,6 +552,14 @@
                 "sha256:daf276c465c38ef736a79bd79fc80a249f746bcbcae50c40945428f7ece074f8"
             ],
             "version": "==0.23.2"
+        },
+        "scikit-plot": {
+            "hashes": [
+                "sha256:2c7948817fd2dc06879cfe3c1fdde56a8e71fa5ac626ffbe79f043650baa6242",
+                "sha256:6b3d529800b32a899c54dc5761a93c63cbff482b1889a4afee57dd219f3ef0c3"
+            ],
+            "index": "pypi",
+            "version": "==0.3.7"
         },
         "scipy": {
             "hashes": [
