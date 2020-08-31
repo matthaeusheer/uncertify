@@ -38,7 +38,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._train_step_counter = 0
         self.save_hyperparameters('decoder', 'encoder', 'get_batch_fn')
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
         Args:
             x: raw image tensor (un-flattened)
@@ -46,7 +46,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         mu, log_var = self._encoder(x)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        return reconstruction, mu, log_var
+        total_loss, kld_loss, reconstruction_loss = self.loss_function(reconstruction, x, mu, log_var)
+        return reconstruction, mu, log_var, total_loss, kld_loss, reconstruction_loss
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
@@ -57,8 +58,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = self._get_batch_fn(batch)
-        reconstructed_batch, mu, log_var = self(features)
-        train_loss, kld_loss, reconstruction_loss = self.loss_function(reconstructed_batch, features, mu, log_var)
+        reconstructed_batch, mu, log_var, train_loss, kld_loss, reconstruction_loss = self(features)
         logger_losses = {'train_loss': train_loss,
                          'train_reconstruction_loss': reconstruction_loss,
                          'train_kld_loss': kld_loss}
@@ -73,7 +73,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         return {'val_loss': val_loss, 'val_kld_loss': kld_loss, 'val_recon_loss': reconstruction_loss,
                 'reconstructed_batch': reconstructed_batch, 'input_batch': features}
 
-    def validation_epoch_end(self, outputs: List[Dict]) -> None:
+    def validation_epoch_end(self, outputs: List[Dict]) -> dict:
         # Compute average validation loss
         avg_val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         avg_val_kld_loss = torch.stack([x['val_kld_loss'] for x in outputs]).mean()
@@ -98,7 +98,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         for name, param in self.named_parameters():
             self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
         self.val_counter += 1
-        return {}
+        return dict()
 
     @staticmethod
     def old_loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tuple[Tensor, Tensor, Tensor]:

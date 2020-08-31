@@ -27,6 +27,10 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         ax.set_aspect('auto')
     if 'axis' in kwargs:
         ax.axis(kwargs.get('axis'))
+    if 'xlabel' in kwargs:
+        ax.set_xlabel(kwargs.get('xlabel'))
+    if 'ylabel' in kwargs:
+        ax.set_ylabel(kwargs.get('ylabel'))
     return fig, ax
 
 

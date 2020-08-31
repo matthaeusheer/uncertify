@@ -31,7 +31,7 @@ def yield_reconstructed_batches(data_loader: DataLoader,
     and yield a tuple dicts of scan, reconstruction and (if present in dataloader) segmentation batches."""
     for batch in itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader:
         scan_batch = batch['scan']
-        reconstruction_batch = trained_model(scan_batch)[0]  # Maybe change model for not to do [0] here, not nice
+        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss = trained_model(scan_batch)  # Maybe change model for not to do [0] here, not nice
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
         thresholded_batch = normalize_to_0_1(residual_batch)
         if residual_threshold is not None:
@@ -40,6 +40,10 @@ def yield_reconstructed_batches(data_loader: DataLoader,
         if 'seg' in batch.keys():
             # add segmentation if available
             output['seg'] = torch.where(batch['seg'] > 0, torch.ones_like(batch['seg']), torch.zeros_like(batch['seg']))
+        # append the loss terms to out dict
+        for key, value in zip(['total_loss', 'kld_loss', 'reconstruction_loss'],
+                              [total_loss, kld_loss, reconstruction_loss]):
+            output[key] = value
         if print_statistics:
             with torch.no_grad():
                 for name, sub_batch in output.items():
