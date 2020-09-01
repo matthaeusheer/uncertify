@@ -28,9 +28,9 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
     if 'axis' in kwargs:
         ax.axis(kwargs.get('axis'))
     if 'xlabel' in kwargs:
-        ax.set_xlabel(kwargs.get('xlabel'))
+        ax.set_xlabel(kwargs.get('xlabel'), fontweight='bold')
     if 'ylabel' in kwargs:
-        ax.set_ylabel(kwargs.get('ylabel'))
+        ax.set_ylabel(kwargs.get('ylabel'), fontweight='bold')
     return fig, ax
 
 

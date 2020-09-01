@@ -26,20 +26,27 @@ def yield_reconstructed_batches(data_loader: DataLoader,
                                 max_batches: int = None,
                                 residual_threshold: float = None,
                                 residual_fn: Callable = l1_distance,
+                                get_batch_fn: Callable = lambda batch: batch['scan'],
                                 print_statistics: bool = False) -> Generator[Dict[str, Tensor], None, None]:
     """For some dataloader and a trained model, run the 'scan' tensors of the dataloader through the model
     and yield a tuple dicts of scan, reconstruction and (if present in dataloader) segmentation batches."""
     for batch in itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader:
-        scan_batch = batch['scan']
+        scan_batch = get_batch_fn(batch)
         reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss = trained_model(scan_batch)  # Maybe change model for not to do [0] here, not nice
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
         thresholded_batch = normalize_to_0_1(residual_batch)
         if residual_threshold is not None:
             thresholded_batch = threshold_batch_to_one_zero(thresholded_batch, residual_threshold)
         output = {'scan': scan_batch, 'rec': reconstruction_batch, 'res': residual_batch, 'thresh': thresholded_batch}
-        if 'seg' in batch.keys():
-            # add segmentation if available
-            output['seg'] = torch.where(batch['seg'] > 0, torch.ones_like(batch['seg']), torch.zeros_like(batch['seg']))
+        try:
+            if 'seg' in batch.keys():
+                # add segmentation if available
+                output['seg'] = torch.where(batch['seg'] > 0,
+                                            torch.ones_like(batch['seg']),
+                                            torch.zeros_like(batch['seg']))
+        except AttributeError as error:
+            # LOG.warning(f'Batch has no keys. Probably MNIST like. {error}')
+            pass
         # append the loss terms to out dict
         for key, value in zip(['total_loss', 'kld_loss', 'reconstruction_loss'],
                               [total_loss, kld_loss, reconstruction_loss]):
