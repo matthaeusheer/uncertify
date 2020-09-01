@@ -58,6 +58,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = self._get_batch_fn(batch)
+        print(features.shape)
         reconstructed_batch, mu, log_var, train_loss, kld_loss, reconstruction_loss = self(features)
         logger_losses = {'train_loss': train_loss,
                          'train_reconstruction_loss': reconstruction_loss,

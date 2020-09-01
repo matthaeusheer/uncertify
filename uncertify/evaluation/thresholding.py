@@ -49,7 +49,6 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
                                   f'provide batches under "seg" key. Exit.')
                     raise
                 gt_np = ground_truth.numpy().astype(int)
-                #gt_np = np.where(gt_np > 0, np.ones_like(gt_np), np.zeros_like(gt_np)).astype(int)
                 fpr = false_positive_rate(pred_np, gt_np)
             else:
                 fpr = false_positive_rate(pred_np, np.zeros_like(pred_np))
