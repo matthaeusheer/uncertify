@@ -47,8 +47,8 @@ def calculate_mean_segmentation_score(data_loader: DataLoader, model: torch.nn.M
                                                   print_statistics=False)
     per_batch_scores = []
     for batch_idx, batch in enumerate(batch_generator):
-        prediction_batch = batch['thresh']
-        ground_truth_batch = batch['seg']
+        prediction_batch = batch['thresh'][batch['mask']]
+        ground_truth_batch = batch['seg'][batch['mask']]
         with torch.no_grad():
             if score_type == 'dice':
                 score = dice(prediction_batch.numpy(), ground_truth_batch.numpy())
@@ -79,8 +79,8 @@ def calculate_confusion_matrix(data_loader: DataLoader, model: torch.nn.Module, 
     confusion_matrix = np.zeros((2, 2))  # initialize zero confusion matrix
     for batch_idx, batch in enumerate(batch_generator):
         with torch.no_grad():
-            y_pred = batch['thresh'].flatten().numpy()
-            y_true = batch['seg'].flatten().numpy()
+            y_pred = batch['thresh'][batch['mask']].flatten().numpy()
+            y_true = batch['seg'][batch['mask']].flatten().numpy()
             sub_confusion_matrix = sklearn_metrics.confusion_matrix(y_true, y_pred, normalize=normalize)
             confusion_matrix += sub_confusion_matrix
     return confusion_matrix

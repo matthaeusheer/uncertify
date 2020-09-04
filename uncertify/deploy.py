@@ -6,11 +6,13 @@ import scipy.stats
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
+from tqdm import tqdm
 
 from uncertify.utils.custom_types import Tensor
 from uncertify.evaluation.utils import threshold_batch_to_one_zero
 from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.tensor_ops import print_scipy_stats_description
+from uncertify.data.utils import get_n_masked_pixels
 
 from typing import Generator, Dict, Tuple, Callable
 
@@ -30,9 +32,12 @@ def yield_reconstructed_batches(data_loader: DataLoader,
                                 print_statistics: bool = False) -> Generator[Dict[str, Tensor], None, None]:
     """For some dataloader and a trained model, run the 'scan' tensors of the dataloader through the model
     and yield a tuple dicts of scan, reconstruction and (if present in dataloader) segmentation batches."""
-    for batch in itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader:
+    data_generator = itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader
+    n_batches = max_batches if max_batches is not None else len(data_loader)
+    for batch in tqdm(data_generator, desc='Inferring batches', total=n_batches):
         scan_batch = get_batch_fn(batch)
-        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss = trained_model(scan_batch)  # Maybe change model for not to do [0] here, not nice
+        # Run actual inference for batch
+        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss = trained_model(scan_batch)
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
         thresholded_batch = normalize_to_0_1(residual_batch)
         if residual_threshold is not None:
@@ -44,6 +49,8 @@ def yield_reconstructed_batches(data_loader: DataLoader,
                 output['seg'] = torch.where(batch['seg'] > 0,
                                             torch.ones_like(batch['seg']),
                                             torch.zeros_like(batch['seg']))
+            if 'mask' in batch.keys():
+                output['mask'] = batch['mask']
         except AttributeError as error:
             # LOG.warning(f'Batch has no keys. Probably MNIST like. {error}')
             pass
@@ -61,7 +68,6 @@ def yield_reconstructed_batches(data_loader: DataLoader,
 
 def yield_y_true_y_pred(data_loader: DataLoader,
                         trained_model: torch.nn.Module,
-                        img_shape: Tuple[int, int],
                         max_n_batches: int = None,
                         residual_fn: Callable = l1_distance,
                         print_statistics: bool = False):
@@ -72,20 +78,28 @@ def yield_y_true_y_pred(data_loader: DataLoader,
             y_true: a one-hot encoded vector where 1 stands for abnormal pixel and 0 stands for normal pixel
             y_pred: the residual vector (values ranging from 0 to 1)
     """
-    batch_size = data_loader.batch_size
-    data_loader = itertools.islice(data_loader, max_n_batches) if max_n_batches is not None else data_loader
-    n_batches = len(data_loader) if max_n_batches is None else max_n_batches
-    n_pixels_per_batch = math.prod(img_shape) * batch_size
-    y_true = np.empty(n_batches * n_pixels_per_batch)
-    y_pred = np.empty((n_batches * n_pixels_per_batch, 2))
+    # For further calculations (sklearn) need ground truth (n) - array and prediction probabilities as (n, 2) - array
+    # where column 0 is normal probability and column 1 is abnormal probability (1-normal_probability)
+    # Per batch one list which will hold an array for the per-batch ground truth and prediction masked pixels
+    y_true_batch_list = []
+    y_pred_batch_list = []
 
-    for batch_idx, batch in enumerate(yield_reconstructed_batches(data_loader, trained_model, max_n_batches,
-                                                                  None, residual_fn, print_statistics)):
+    for batch_idx, batch in enumerate(yield_reconstructed_batches(data_loader=data_loader,
+                                                                  trained_model=trained_model,
+                                                                  max_batches=max_n_batches,
+                                                                  residual_threshold=None,
+                                                                  residual_fn=residual_fn,
+                                                                  print_statistics=print_statistics)):
         with torch.no_grad():
-            batch_y_true = batch['seg'].flatten().numpy()
-            abnormal_pred = normalize_to_0_1(batch['res']).flatten().numpy()
+            # Get ground truth and prediction for whole brain
+            batch_y_true = batch['seg'][batch['mask']].flatten().numpy()
+            abnormal_pred = normalize_to_0_1(batch['res'][batch['mask']]).flatten().numpy()
             normal_pred = 1 - abnormal_pred
-            stacked = np.vstack((normal_pred, abnormal_pred)).T
-            y_true[batch_idx * n_pixels_per_batch: batch_idx * n_pixels_per_batch + n_pixels_per_batch] = batch_y_true
-            y_pred[batch_idx * n_pixels_per_batch: batch_idx * n_pixels_per_batch + n_pixels_per_batch] = stacked
-    return y_true, y_pred
+            stacked = np.vstack((normal_pred, abnormal_pred))
+            y_true_batch_list.append(batch_y_true)
+            y_pred_batch_list.append(stacked)
+    y_true_np = np.hstack(y_true_batch_list)
+    y_pred_np = np.concatenate(y_pred_batch_list, axis=1)
+    return y_true_np, y_pred_np.T
+
+

@@ -46,7 +46,8 @@ class Brats2017HDF5Dataset(HDF5Dataset):
             else:  # Assume that this transform acts on the sample directly!
                 scan_sample = transform(scan_sample)
                 seg_sample = transform(seg_sample)
-        return {'scan': scan_sample, 'seg': seg_sample, 'mask': mask_sample}
+                mask_sample = transform(mask_sample)
+        return {'scan': scan_sample, 'seg': seg_sample, 'mask': mask_sample > 0}  # > 0 transforms mask into bool tensor
 
 
 class CamCanHDF5Dataset(HDF5Dataset):
@@ -65,4 +66,4 @@ class CamCanHDF5Dataset(HDF5Dataset):
                 else:
                     scan_sample = transform(scan_sample)
                     mask_sample = transform(mask_sample)
-        return {'scan': scan_sample, 'mask': mask_sample}
+        return {'scan': scan_sample, 'mask': mask_sample > 0}  # > 0 transforms mask into bool tensor

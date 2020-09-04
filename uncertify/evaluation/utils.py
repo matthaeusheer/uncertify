@@ -10,5 +10,9 @@ def threshold_batch_to_one_zero(tensor: Tensor, threshold: float) -> Tensor:
     return torch.where(tensor > threshold, ones, zeros)
 
 
-def golden_section_search(objective, interval, tolerance):
-    ...
+def is_abnormal(segmentation: Tensor, pixel_fraction_threshold: float) -> bool:
+    """Based on the fraction of abnormally labelled pixels, is this scan considered abnormal?
+    Args:
+        segmentation: a tensor for the ground truth segmentation, expected to have only zero and one (anomaly) entries
+        pixel_fraction_threshold:
+    """

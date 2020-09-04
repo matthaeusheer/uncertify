@@ -5,13 +5,18 @@ from scipy import stats
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from uncertify.utils.tensor_ops import normalize_to_0_1
+from uncertify.visualization.plotting import setup_plt_figure
 from uncertify.visualization.grid import imshow_grid
+from uncertify.evaluation.datasets import get_n_normal_abnormal_pixels
+from uncertify.visualization.histograms import plot_multi_histogram
+
+from typing import Tuple
 
 LOG = logging.getLogger(__name__)
 
@@ -62,6 +67,61 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
             print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
                   f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
-
         plt.tight_layout()
         plt.show()
+
+
+def plot_abnormal_pixel_distribution(data_loader: DataLoader, **hist_kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """For a dataset with given ground truth, plot the distribution of fraction of abnormal pixels in an image.
+
+    Note: Only pixels within the brain mask are considered and only samples with abnormal pixels are considered.
+    """
+    normal_pixels, abnormal_pixels, total_masked_pixels = get_n_normal_abnormal_pixels(data_loader)
+
+    fig, ax = plot_multi_histogram(
+        arrays=[np.array(normal_pixels), np.array(abnormal_pixels), np.array(total_masked_pixels)],
+        labels=['Normal pixels', 'Abnormal pixels', 'Mask Size'],
+        plot_density=False,
+        title='Distribution of the sample-wise number of normal / abnormal pixels',
+        xlabel='Number of pixels',
+        ylabel='Frequency',
+        **hist_kwargs)
+    return fig, ax
+
+
+def plot_fraction_of_abnormal_pixels(data_loader: DataLoader, **hist_kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """For a dataset with given ground truth, plot the distribution of fraction of abnormal pixels in an image.
+
+    Note: Only pixels within the brain mask are considered and only samples with abnormal pixels are considered.
+    """
+    normal_pixels, abnormal_pixels, total_masked_pixels = get_n_normal_abnormal_pixels(data_loader)
+    fractions = []
+    for normal, total in zip(abnormal_pixels, total_masked_pixels):
+        fraction = normal / total
+        fractions.append(fraction)
+    percentile_95 = np.percentile(fractions, q=95)
+    fig, ax = plot_multi_histogram(
+        arrays=[np.array(fractions)],
+        labels=None,
+        plot_density=True,
+        kde_bandwidth=0.02,
+        xlabel='Fraction of abnormal pixels from all pixels within brain masks',
+        ylabel='Frequency',
+        **hist_kwargs)
+    ax.plot([percentile_95, percentile_95], [0, 3], 'g--', linewidth=2)  # TODO: Hardcoded.
+    return fig, ax
+
+
+def boxplot_abnormal_pixel_fraction(data_loader: DataLoader, **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """A boxplot from the """
+    fig, ax = setup_plt_figure(aspect='auto', **plt_kwargs)
+    normal_pixels, abnormal_pixels, total_masked_pixels = get_n_normal_abnormal_pixels(data_loader)
+    fractions = []
+    for normal, total in zip(abnormal_pixels, total_masked_pixels):
+        fraction = normal / total
+        fractions.append(fraction)
+    percentile_95 = np.percentile(fractions, q=95)
+    ax = sns.boxplot(data=np.array(fractions), ax=ax)
+    ax.set_title(f'95 percentile = {percentile_95:.2f}', fontweight='bold')
+    plt.tight_layout()
+    return fig, ax
