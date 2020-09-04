@@ -29,7 +29,8 @@ BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
 
 def dataloader_factory(dataset_type: DatasetType, batch_size: int,
                        transform: Any = None, num_workers: int = 0,
-                       shuffle_train: bool = True, shuffle_val: bool = False) -> Tuple[Optional[DataLoader], Optional[DataLoader]]:
+                       shuffle_train: bool = True, shuffle_val: bool = False) -> Tuple[Optional[DataLoader],
+                                                                                       Optional[DataLoader]]:
     """Returns a train and val dataloader for given dataset type."""
     assert isinstance(dataset_type, DatasetType), f'Need to provide valid DatasetType (enum).'
     if dataset_type == DatasetType.MNIST:

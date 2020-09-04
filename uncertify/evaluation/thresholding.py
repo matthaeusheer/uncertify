@@ -39,11 +39,11 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
     per_batch_fpr = []
     with torch.no_grad():
         for batch_idx, batch in enumerate(itertools.islice(result_generator, n_batches_per_thresh)):
-            prediction = batch['thresh']
+            prediction = batch['thresh'][batch['mask']]
             pred_np = prediction.numpy().astype(int)
             if use_ground_truth:
                 try:
-                    ground_truth = batch['seg']
+                    ground_truth = batch['seg'][batch['mask']]
                 except KeyError:
                     LOG.exception(f'When use_ground_truth=True, the data_loader must '
                                   f'provide batches under "seg" key. Exit.')

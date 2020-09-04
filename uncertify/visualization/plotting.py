@@ -20,7 +20,7 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
     if 'title' in kwargs:
-        ax.set_title(kwargs.get('title'))
+        ax.set_title(kwargs.get('title'), fontweight='bold')
     if 'aspect' in kwargs:
         ax.set_aspect(kwargs.get('aspect'))
     else:

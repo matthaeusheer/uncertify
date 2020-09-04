@@ -4,19 +4,19 @@ from typing import Tuple
 
 
 def true_positives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
-    return np.sum(np.logical_and(prediction == 1, ground_truth == 1))
+    return int(np.sum(np.logical_and(prediction == 1, ground_truth == 1)))
 
 
 def false_positives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
-    return np.sum(np.logical_and(prediction == 1, ground_truth == 0))
+    return int(np.sum(np.logical_and(prediction == 1, ground_truth == 0)))
 
 
 def true_negatives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
-    return np.sum(np.logical_and(prediction == 0, ground_truth == 0))
+    return int(np.sum(np.logical_and(prediction == 0, ground_truth == 0)))
 
 
 def false_negatives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
-    return np.sum(np.logical_and(prediction == 0, ground_truth == 1))
+    return int(np.sum(np.logical_and(prediction == 0, ground_truth == 1)))
 
 
 def intersection_over_union(prediction: np.ndarray, ground_truth: np.ndarray) -> float:
