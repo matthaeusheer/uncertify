@@ -16,7 +16,7 @@ from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.tensor_ops import print_scipy_stats_description
 from uncertify.deploy import yield_reconstructed_batches
 
-from typing import Generator, Dict
+from typing import Generator, Dict, Tuple
 
 
 def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str, Tensor], None, None],
@@ -51,6 +51,16 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str
             if save_dir_path is not None:
                 img_file_name = f'batch_{batch_idx}.png'
                 fig.savefig(save_dir_path / img_file_name, bbox_inches='tight', pad_inches=0)
+
+
+def plot_vae_output(decoder_output_batch: Tensor, nrow: int = 8, transpose_grid: bool = False,
+                    **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """Plot the output tensor batch from the VAE as a grid."""
+    grid = torchvision.utils.make_grid(decoder_output_batch, nrow=nrow, padding=0)
+    if transpose_grid:
+        grid = grid.transpose(dim0=1, dim1=2)  # swap rows and columns of the grid
+    fig, ax = imshow_grid(grid, **kwargs)
+    return fig, ax
 
 
 def plot_pixel_value_histogram(batch_generator: Generator[Dict[str, Tensor], None, None],
