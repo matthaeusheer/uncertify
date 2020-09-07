@@ -1,10 +1,15 @@
-"""
-Some functionality to quickly set up matplotlib figures and plot images (numpy.ndarray).
-"""
+import logging
+from pathlib import Path
+
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+LOG = logging.getLogger(__name__)
+
+
+DEFAULT_SAVE_FIG_KWARGS = dict(bbox_inches='tight', pad_inches=0, dpi=300)
 
 
 def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
@@ -68,3 +73,16 @@ def imshow(img: np.ndarray, axis: str = 'on', ax: plt.Axes = None, add_colorbar:
             'size': 12}
     matplotlib.rc('font', **font)
     return fig, ax
+
+
+def save_fig(fig: plt.Figure, save_path: Path, create_dirs: bool = False, **kwargs) -> None:
+    """Save a figure and potentially create the location. """
+    if not save_path.parent.exists():
+        if create_dirs:
+            save_path.parent.mkdir(parents=True)
+        else:
+            LOG.warning(f'Save storage location does not exist. Consider create_dirs=True. Not saving figure.')
+            return
+    DEFAULT_SAVE_FIG_KWARGS.update(kwargs)
+    fig.savefig(save_path, **DEFAULT_SAVE_FIG_KWARGS)
+    LOG.info(f'Saved figure at {save_path} with settings: {DEFAULT_SAVE_FIG_KWARGS}')
