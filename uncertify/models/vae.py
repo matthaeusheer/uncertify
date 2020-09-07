@@ -40,7 +40,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._train_step_counter = 0
         self.save_hyperparameters('decoder', 'encoder', 'get_batch_fn')
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
         Args:
             x: raw image tensor (un-flattened)
@@ -48,8 +48,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         mu, log_var = self._encoder(x)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        total_loss, kld_loss, reconstruction_loss = self.loss_function(reconstruction, x, mu, log_var)
-        return reconstruction, mu, log_var, total_loss, kld_loss, reconstruction_loss, latent_code
+        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, x, mu, log_var)
+        return reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
@@ -140,10 +140,10 @@ class VariationalAutoEncoder(pl.LightningModule):
         # Take the mean over all batches
         variational_lower_bound = -kl_div + log_p_x_z
         total_loss = torch.mean(-variational_lower_bound)
-        kl_div = torch.mean(kl_div)
-        log_p_x_z = torch.mean(log_p_x_z)
+        mean_kl_div = torch.mean(kl_div)
+        mean_log_p_x_z = torch.mean(log_p_x_z)
 
-        return total_loss, kl_div, -log_p_x_z
+        return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
 
     def configure_optimizers(self) -> Optimizer:
         """Pytorch-lightning function."""

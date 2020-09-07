@@ -9,14 +9,14 @@ from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Iterable, Generator, Dict
 
-DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5)
+DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=True, bins=30)
 
 
 def plot_multi_histogram(arrays: List[np.ndarray],
                          labels: List[str] = None,
                          plot_density: bool = True,
                          kde_bandwidth: float = 0.005,
-                         show_data_ticks: bool = False,
+                         show_data_ticks: bool = True,
                          hist_kwargs: dict = None,
                          **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
     """Create a figure with a histogram consisting multiple distinct distributions.
@@ -55,35 +55,38 @@ def plot_loss_histograms(output_generators: Iterable[Generator[Dict[str, Tensor]
                          names: Iterable[str], **kwargs) -> List[Tuple[plt.Figure, plt.Axes]]:
     """For different data loaders, plot the loss value histograms."""
     # Prepare dictionaries holding sample-wise losses for different data loaders
-    kld_losses = defaultdict(list)
-    rec_losses = defaultdict(list)
+    kl_divs = defaultdict(list)
+    rec_errors = defaultdict(list)
     # Perform inference and fill the data dicts for later plotting
     for generator, generator_name in zip(output_generators, names):
         for batch in generator:
             has_ground_truth = 'seg' in batch.keys()
             if has_ground_truth:
-                for segmentation, mask, kld, rec in zip(batch['seg'], batch['mask'],
-                                                        batch['kld_loss'], batch['reconstruction_loss']):
-                    n_abnormal_pixels = torch.sum(segmentation > 0)
-                    n_normal_pixels = torch.sum(mask)
+                for segmentation, mask, kl_div, rec_err in zip(batch['seg'], batch['mask'],
+                                                               batch['kl_div'], batch['rec_err']):
+                    n_abnormal_pixels = float(torch.sum(segmentation > 0))
+                    n_normal_pixels = float(torch.sum(mask))
+                    if n_normal_pixels == 0:
+                        continue
                     abnormal_fraction = n_abnormal_pixels / n_normal_pixels
-                    is_abnormal = abnormal_fraction > 0.27  # TODO: Remove hardcoded.
+                    is_abnormal = n_abnormal_pixels > 20 # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
                     suffix = 'abnormal' if is_abnormal else 'normal'
-                    kld_losses[f'_'.join([generator_name, suffix])].append(float(batch['kld_loss']))
-                    kld_losses[f'_'.join([generator_name, suffix])].append(float(batch['reconstruction_loss']))
+                    kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
+                    rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
             else:
-                with torch.no_grad():
-                    kld_losses[generator_name].append(float(batch['kld_loss']))
-                    rec_losses[generator_name].append(float(batch['reconstruction_loss']))
+                for kl_div, rec_err in zip(batch['kl_div'], batch['rec_err']):
+                    kl_divs[generator_name].append(float(kl_div))
+                    rec_errors[generator_name].append(float(rec_err))
     kld_arrays = []
     kld_labels = []
     rec_arrays = []
     rec_labels = []
-    for name in names:
-        kld_arrays.append(np.array(kld_losses[name]))
+    for name, arr in kl_divs.items():
+        kld_arrays.append(np.array(arr))
         kld_labels.append(name)
-        rec_arrays.append(np.array(rec_losses[name]))
+    for name, arr in rec_errors.items():
+        rec_arrays.append(np.array(rec_errors[name]))
         rec_labels.append(name)
-    fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KLD Term Loss', **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Loss', **kwargs)
+    fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KL Divergence', **kwargs)
+    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error', **kwargs)
     return [(fig1, ax2), (fig2, ax2)]
