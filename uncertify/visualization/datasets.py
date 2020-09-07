@@ -99,7 +99,7 @@ def plot_fraction_of_abnormal_pixels(data_loader: DataLoader, **hist_kwargs) -> 
     for normal, total in zip(abnormal_pixels, total_masked_pixels):
         fraction = normal / total
         fractions.append(fraction)
-    percentile_95 = np.percentile(fractions, q=95)
+    percentile_5 = np.percentile(fractions, q=5)
     fig, ax = plot_multi_histogram(
         arrays=[np.array(fractions)],
         labels=None,
@@ -108,7 +108,7 @@ def plot_fraction_of_abnormal_pixels(data_loader: DataLoader, **hist_kwargs) -> 
         xlabel='Fraction of abnormal pixels from all pixels within brain masks',
         ylabel='Frequency',
         **hist_kwargs)
-    ax.plot([percentile_95, percentile_95], [0, 3], 'g--', linewidth=2)  # TODO: Hardcoded.
+    ax.plot([percentile_5, percentile_5], [0, 3], 'g--', linewidth=2)  # TODO: Hardcoded.
     return fig, ax
 
 
@@ -120,8 +120,8 @@ def boxplot_abnormal_pixel_fraction(data_loader: DataLoader, **plt_kwargs) -> Tu
     for normal, total in zip(abnormal_pixels, total_masked_pixels):
         fraction = normal / total
         fractions.append(fraction)
-    percentile_95 = np.percentile(fractions, q=95)
+    percentile_5 = np.percentile(fractions, q=5)
     ax = sns.boxplot(data=np.array(fractions), ax=ax)
-    ax.set_title(f'95 percentile = {percentile_95:.2f}', fontweight='bold')
+    ax.set_title(f'5 percentile = {percentile_5:.2f}', fontweight='bold')
     plt.tight_layout()
     return fig, ax

@@ -30,15 +30,20 @@ def get_n_normal_abnormal_pixels(data_loader: DataLoader) -> Tuple[List[int], Li
     return normal_pixels, abnormal_pixels, total_masked_pixels
 
 
-def get_samples_without_lesions(data_loader: DataLoader) -> Tuple[int, int]:
+def get_samples_without_lesions(data_loader: DataLoader, pixel_ratio_threshold: int) -> Tuple[int, int, int]:
     """Get a tuple representing (n_samples_without_any_lesions, total_number_of_samples)."""
     n_no_lesions = 0
+    n_higher_ratio_threshold = 0  # when ratio of lesional to normal pixels within mask higher than threshold
     n_total = 0
     for batch in tqdm(data_loader, total=len(data_loader), desc=f'Determining samples without lesions'):
         for segmentation, mask in zip(batch['seg'], batch['mask']):
             masked_segmentation = segmentation[mask] > 0
-            n_abnormal_pixels = torch.sum(masked_segmentation)
+            total_mask_pixels = int(masked_segmentation.numel())
+            n_abnormal_pixels = int(torch.sum(masked_segmentation))
             if n_abnormal_pixels == 0:
                 n_no_lesions += 1
+            if total_mask_pixels > 0:
+                if (n_abnormal_pixels / total_mask_pixels) > pixel_ratio_threshold:
+                    n_higher_ratio_threshold += 1
             n_total += 1
-    return n_no_lesions, n_total
+    return n_no_lesions, n_higher_ratio_threshold, n_total
