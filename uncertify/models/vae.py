@@ -6,7 +6,7 @@ import math
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import functional as F
+from torch.nn import functional as torch_functional
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
@@ -16,6 +16,8 @@ from uncertify.models.gradient import Gradient
 from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict, Callable
+
+LATENT_SPACE_DIM = 128
 
 
 class VariationalAutoEncoder(pl.LightningModule):
@@ -38,7 +40,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._train_step_counter = 0
         self.save_hyperparameters('decoder', 'encoder', 'get_batch_fn')
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
         Args:
             x: raw image tensor (un-flattened)
@@ -47,7 +49,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
         total_loss, kld_loss, reconstruction_loss = self.loss_function(reconstruction, x, mu, log_var)
-        return reconstruction, mu, log_var, total_loss, kld_loss, reconstruction_loss
+        return reconstruction, mu, log_var, total_loss, kld_loss, reconstruction_loss, latent_code
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
@@ -58,7 +60,6 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = self._get_batch_fn(batch)
-        print(features.shape)
         reconstructed_batch, mu, log_var, train_loss, kld_loss, reconstruction_loss = self(features)
         logger_losses = {'train_loss': train_loss,
                          'train_reconstruction_loss': reconstruction_loss,
@@ -76,12 +77,12 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def validation_epoch_end(self, outputs: List[Dict]) -> dict:
         # Compute average validation loss
-        avg_val_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        avg_val_kld_loss = torch.stack([x['val_kld_loss'] for x in outputs]).mean()
-        avg_val_recon_loss = torch.stack([x['val_recon_loss'] for x in outputs]).mean()
-        losses = {'avg_val_loss': avg_val_loss,
-                  'avg_val_kld_loss': avg_val_kld_loss,
-                  'avg_val_recon_loss': avg_val_recon_loss}
+        avg_val_losses = torch.stack([x['val_loss'] for x in outputs])
+        avg_val_kld_losses = torch.stack([x['val_kld_loss'] for x in outputs])
+        avg_val_recon_losses = torch.stack([x['val_recon_loss'] for x in outputs])
+        losses = {'avg_val_loss': avg_val_losses.mean(),
+                  'avg_val_kld_loss': avg_val_kld_losses.mean(),
+                  'avg_val_recon_loss': avg_val_recon_losses.mean()}
         self.logger.experiment.add_scalars('avg_val_losses', losses, global_step=self._train_step_counter)
 
         # Sample batches from from validation steps and visualize
@@ -99,6 +100,10 @@ class VariationalAutoEncoder(pl.LightningModule):
         for name, param in self.named_parameters():
             self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
         self.val_counter += 1
+        # Sample from latent space and check reconstructions
+        n_latent_samples = 16
+        latent_space_dim = 128
+        latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, latent_space_dim, )))
         return dict()
 
     @staticmethod
@@ -109,7 +114,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         """
         _, _, img_height, img_width = x_in.shape
         # reconstruction_loss = nn.BCEWithLogitsLoss(reduction='mean')(x_in, x_out)  # per pix
-        reconstruction_loss = F.l1_loss(x_out, x_in) / (img_width * img_height)
+        reconstruction_loss = torch_functional.l1_loss(x_out, x_in) / (img_width * img_height)
         kld = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)  # mean over batches
         total_loss = reconstruction_loss + kld
         return total_loss, reconstruction_loss, kld

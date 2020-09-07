@@ -37,12 +37,13 @@ def yield_reconstructed_batches(data_loader: DataLoader,
     for batch in tqdm(data_generator, desc='Inferring batches', total=n_batches):
         scan_batch = get_batch_fn(batch)
         # Run actual inference for batch
-        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss = trained_model(scan_batch)
+        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss, latent_code = trained_model(scan_batch)
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
         thresholded_batch = normalize_to_0_1(residual_batch)
         if residual_threshold is not None:
             thresholded_batch = threshold_batch_to_one_zero(thresholded_batch, residual_threshold)
-        output = {'scan': scan_batch, 'rec': reconstruction_batch, 'res': residual_batch, 'thresh': thresholded_batch}
+        output = {'scan': scan_batch, 'rec': reconstruction_batch, 'res': residual_batch, 'thresh': thresholded_batch,
+                  'latent_code': latent_code}
         try:
             if 'seg' in batch.keys():
                 # add segmentation if available
@@ -103,3 +104,12 @@ def yield_y_true_y_pred(data_loader: DataLoader,
     return y_true_np, y_pred_np.T
 
 
+def sample_from_gauss_prior(n_samples: int, latent_space_dim: int) -> Tensor:
+    """Returns a (n_samples, latent_space_dim)-shaped tensor with samples from the Gaussian prior latent space."""
+    return torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dim)))
+
+
+def infer_latent_space_samples(model: torch.nn.Module, latent_samples: Tensor) -> Tensor:
+    """Run inference only on the decoder part of the model using some samples from the latent space."""
+    with torch.no_grad():
+        return model._decoder(latent_samples)
