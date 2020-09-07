@@ -37,7 +37,10 @@ def yield_reconstructed_batches(data_loader: DataLoader,
     for batch in tqdm(data_generator, desc='Inferring batches', total=n_batches):
         scan_batch = get_batch_fn(batch)
         # Run actual inference for batch
-        reconstruction_batch, mu, log_var, total_loss, kld_loss, reconstruction_loss, latent_code = trained_model(scan_batch)
+        inference_result = trained_model(scan_batch)
+        reconstruction_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
+
+        # Add image tensors to output
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
         thresholded_batch = normalize_to_0_1(residual_batch)
         if residual_threshold is not None:
@@ -55,10 +58,13 @@ def yield_reconstructed_batches(data_loader: DataLoader,
         except AttributeError as error:
             # LOG.warning(f'Batch has no keys. Probably MNIST like. {error}')
             pass
-        # append the loss terms to out dict
-        for key, value in zip(['total_loss', 'kld_loss', 'reconstruction_loss'],
-                              [total_loss, kld_loss, reconstruction_loss]):
+
+        # Add loss terms to output
+        for key, value in zip(['total_loss', 'mean_kld_div', 'mean_rec_err', 'kl_div', 'rec_err'],
+                              [total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err]):
             output[key] = value
+
+        # Print statistics
         if print_statistics:
             with torch.no_grad():
                 for name, sub_batch in output.items():
