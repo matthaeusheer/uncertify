@@ -5,7 +5,7 @@
 #SBATCH --job-name train_vae
 
 source /itet-stor/maheer/net_scratch/conda/etc/profile.d/conda.sh
-conda activate cluster_pytorch_glow
+conda activate uncertify_env
 mkdir -p ../data/slurm_logs
 
 python -u ../scripts/train_vae.py "$@"

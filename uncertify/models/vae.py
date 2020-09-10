@@ -19,24 +19,20 @@ LATENT_SPACE_DIM = 128
 
 
 class VariationalAutoEncoder(pl.LightningModule):
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, get_batch_fn: Callable = lambda x: x) -> None:
+    def __init__(self, encoder: nn.Module, decoder: nn.Module) -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
         Args:
             encoder: the encoder module (can be pytorch or lightning module)
             decoder: the decoder module (can be pytorch or lightning module)
-            get_batch_fn: some dataloaders provide images differently (e.g. either image tensor directly or a dict
-                          with input images and segmentation image tensors), this function takes in a batch as
-                          returned by the dataloader and returns the plain input image tensor to train on
         """
         super().__init__()
         self._encoder = encoder
         self._decoder = decoder
-        self._get_batch_fn = get_batch_fn
         self._gradient_net = Gradient()
         self._train_steps = 0
         self.val_counter = 0
         self._train_step_counter = 0
-        self.save_hyperparameters('decoder', 'encoder', 'get_batch_fn')
+        self.save_hyperparameters('decoder', 'encoder')
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
@@ -57,7 +53,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         return mu + eps * std
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
-        features = self._get_batch_fn(batch)
+        features = batch['scan']
         reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
         logger_losses = {'train_loss': total_loss,
                          'train_reconstruction_err': mean_rec_err,
@@ -67,7 +63,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         return {'loss': total_loss}
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
-        features = self._get_batch_fn(batch)  # some datasets (e.g. brats) holds also 'seg' batch
+        features = batch['scan']  # some datasets (e.g. brats) holds also 'seg' batch
         reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
         total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu, log_var)
 

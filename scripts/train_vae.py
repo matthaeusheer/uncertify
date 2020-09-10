@@ -35,7 +35,6 @@ def parse_args() -> argparse.Namespace:
         '-w',
         '--num-workers',
         type=int,
-        choices=list(range(9)),
         default=0,
         help='How many workers to use for data loading.'
     )
@@ -52,24 +51,22 @@ def parse_args() -> argparse.Namespace:
 def main(args: argparse.Namespace) -> None:
     LOG.info(f'Argparse args: {args.__dict__}')
     logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name=Path(__file__).stem)
-
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
-                      # 'max_epochs': 20,
+                      'max_epochs': 20,
                       'val_check_interval': 0.2,  # check (1 / value) * times per train epoch
                       'gpus': 1,
-                      # 'limit_train_batches': 0.2,
-                      # 'limit_val_batches': 0.5,
-                      'fast_dev_run': True}
+                      'distributed_backend': 'ddp',
+                      'limit_train_batches': 0.5,
+                      'limit_val_batches': 0.5,
+                      'profiler': True,
+                      'fast_dev_run': False}
     trainer = pl.Trainer(**trainer_kwargs)
 
     if args.dataset == 'mnist':
         transform = Compose([torchvision.transforms.Resize((128, 128)),
                              torchvision.transforms.ToTensor()])
         dataset_type = DatasetType.MNIST
-
-        def get_batch_fn(batch_input):
-            return batch_input[0]
 
     elif args.dataset == 'camcan':
         transform = Compose([
@@ -80,8 +77,6 @@ def main(args: argparse.Namespace) -> None:
         ])
         dataset_type = DatasetType.CAMCAN
 
-        def get_batch_fn(batch_input):
-            return batch_input['scan']
     else:
         raise ValueError(f'Dataset arg "{args.dataset}" not supported.')
 
@@ -89,7 +84,7 @@ def main(args: argparse.Namespace) -> None:
                                                           batch_size=args.batch_size,
                                                           transform=transform,
                                                           num_workers=args.num_workers)
-    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder(), get_batch_fn=get_batch_fn)
+    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
 
 

@@ -5,7 +5,7 @@ import torchvision
 from torch.utils.data import DataLoader
 
 from uncertify.data.np_transforms import NumpyReshapeTransform, Numpy2PILTransform
-from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset
+from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset, MnistDatasetWrapper
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Any, Optional
@@ -84,7 +84,7 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                                            train=True,
                                            download=True,
                                            transform=transform)
-    return DataLoader(train_set,
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set),
                       batch_size=batch_size,
                       shuffle=shuffle,
                       num_workers=num_workers)
@@ -98,7 +98,7 @@ def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any =
                                          train=False,
                                          download=True,
                                          transform=transform)
-    return DataLoader(val_set,
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set),
                       batch_size=batch_size,
                       shuffle=False,
                       num_workers=num_workers)
