@@ -60,7 +60,7 @@ def main(args: argparse.Namespace) -> None:
                       'gpus': 1,
                       # 'limit_train_batches': 0.2,
                       # 'limit_val_batches': 0.5,
-                      'fast_dev_run': False}
+                      'fast_dev_run': True}
     trainer = pl.Trainer(**trainer_kwargs)
 
     if args.dataset == 'mnist':
