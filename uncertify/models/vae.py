@@ -1,8 +1,6 @@
 """
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
-import math
-
 import numpy as np
 import torch
 from torch import nn
@@ -60,30 +58,31 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = self._get_batch_fn(batch)
-        reconstructed_batch, mu, log_var, train_loss, kld_loss, reconstruction_loss = self(features)
-        logger_losses = {'train_loss': train_loss,
-                         'train_reconstruction_loss': reconstruction_loss,
-                         'train_kld_loss': kld_loss}
+        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+        logger_losses = {'train_loss': total_loss,
+                         'train_reconstruction_err': mean_rec_err,
+                         'train_kld_dic': mean_kl_div}
         self.logger.experiment.add_scalars('train_losses_vs_step', logger_losses, global_step=self._train_step_counter)
         self._train_step_counter += 1
-        return {'loss': train_loss}
+        return {'loss': total_loss}
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         features = self._get_batch_fn(batch)  # some datasets (e.g. brats) holds also 'seg' batch
-        reconstructed_batch, mu, log_var = self(features)
-        val_loss, kld_loss, reconstruction_loss = self.loss_function(reconstructed_batch, features, mu, log_var)
-        return {'val_loss': val_loss, 'val_kld_loss': kld_loss, 'val_recon_loss': reconstruction_loss,
-                'reconstructed_batch': reconstructed_batch, 'input_batch': features}
+        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+        total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu, log_var)
+
+        return {'val_mean_total_loss': total_loss, 'val_mean_kl_div': mean_kl_div, 'val_mean_rec_err': mean_rec_err,
+                'reconstructed_batch': reconstruction, 'input_batch': features}
 
     def validation_epoch_end(self, outputs: List[Dict]) -> dict:
         # Compute average validation loss
-        avg_val_losses = torch.stack([x['val_loss'] for x in outputs])
-        avg_val_kld_losses = torch.stack([x['val_kld_loss'] for x in outputs])
-        avg_val_recon_losses = torch.stack([x['val_recon_loss'] for x in outputs])
-        losses = {'avg_val_loss': avg_val_losses.mean(),
-                  'avg_val_kld_loss': avg_val_kld_losses.mean(),
-                  'avg_val_recon_loss': avg_val_recon_losses.mean()}
-        self.logger.experiment.add_scalars('avg_val_losses', losses, global_step=self._train_step_counter)
+        avg_val_losses = torch.stack([x['val_mean_total_loss'] for x in outputs])
+        avg_val_kld_losses = torch.stack([x['val_mean_kl_div'] for x in outputs])
+        avg_val_recon_losses = torch.stack([x['val_mean_rec_err'] for x in outputs])
+        losses = {'avg_val_mean_total_loss': avg_val_losses.mean(),
+                  'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
+                  'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
+        self.logger.experiment.add_scalars('avg_val_mean_losses', losses, global_step=self._train_step_counter)
 
         # Sample batches from from validation steps and visualize
         np.random.seed(0)  # Make sure we always use the same samples for visualization
