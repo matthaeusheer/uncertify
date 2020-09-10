@@ -57,7 +57,7 @@ def main(args: argparse.Namespace) -> None:
                       'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
                       # 'max_epochs': 20,
                       'val_check_interval': 0.2,  # check (1 / value) * times per train epoch
-                      #'gpus': 0,
+                      'gpus': 1,
                       # 'limit_train_batches': 0.2,
                       # 'limit_val_batches': 0.5,
                       'fast_dev_run': True}
