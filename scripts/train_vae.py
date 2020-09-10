@@ -52,9 +52,11 @@ def parse_args() -> argparse.Namespace:
 def main(args: argparse.Namespace) -> None:
     LOG.info(f'Argparse args: {args.__dict__}')
     logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name=Path(__file__).stem)
+    log_dir = DATA_DIR_PATH / 'lightning_logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     trainer_kwargs = {'logger': logger,
-                      'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
+                      'default_root_dir': str(log_dir),
                       # 'max_epochs': 20,
                       'val_check_interval': 0.2,  # check (1 / value) * times per train epoch
                       'gpus': 1,
