@@ -132,3 +132,4 @@ data/*
 # log dir
 logs/
 lightning_logs/
+slurm_logs/
