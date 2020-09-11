@@ -1,3 +1,4 @@
+import os
 import argparse
 import glob
 from tqdm import tqdm
@@ -131,10 +132,23 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
     new_col = sum([do_t1, do_t2, do_seg]) + 1  # +1 for Mask
 
     sample_dir_paths = sorted(glob.glob(str(processed_glob_path)))
-    if limit_n_samples is not None:
-        sample_dir_paths = sample_dir_paths[:limit_n_samples]
+    sample_dir_paths = [item for item in sample_dir_paths if 'Brats17_2013' not in os.path.split(item)[-1]]
 
-    for sample_dir_path in tqdm(sample_dir_paths, desc='Processing samples'):
+    n_processed = 0
+    for sample_dir_path in tqdm(sample_dir_paths, desc='Processing samples',
+                                total=limit_n_samples if limit_n_samples is not None else len(sample_dir_paths)):
+        print(f'\nProcessing {sample_dir_path}')
+        # mask - do always
+        mask_name = glob.glob(sample_dir_path + "/*mask.nii.gz")[0]
+        mask_img = nib.load(mask_name).get_data()
+        mask_img = mask_img.reshape(-1, 200 * 200)
+        if new_col:
+            h5py_file.create_dataset('Mask', data=mask_img, maxshape=(None, 200 * 200))
+            new_col = new_col - 1
+        else:
+            h5py_file["Mask"].resize((h5py_file["Mask"].shape[0] + len(mask_img)), axis=0)
+            h5py_file["Mask"][-len(mask_img):] = mask_img
+
         if do_t1:
             t1_name = glob.glob(sample_dir_path + "/*t1_processed.nii.gz")[0]
             t1_img = nib.load(t1_name).get_data()
@@ -168,16 +182,9 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
             else:
                 h5py_file["Seg"].resize((h5py_file["Seg"].shape[0] + len(seg_img)), axis=0)
                 h5py_file["Seg"][-len(seg_img):] = seg_img
-        # mask - do always
-        mask_name = glob.glob(sample_dir_path + "/*mask.nii.gz")[0]
-        mask_img = nib.load(mask_name).get_data()
-        mask_img = mask_img.reshape(-1, 200 * 200)
-        if new_col:
-            h5py_file.create_dataset('Mask', data=mask_img, maxshape=(None, 200 * 200))
-            new_col = new_col - 1
-        else:
-            h5py_file["Mask"].resize((h5py_file["Mask"].shape[0] + len(mask_img)), axis=0)
-            h5py_file["Mask"][-len(mask_img):] = mask_img
+        n_processed += 1
+        if n_processed == limit_n_samples:
+            break
 
     h5py_file.close()
     print('Done creating h5py dataset.')
@@ -217,7 +224,7 @@ def main(args: argparse.Namespace) -> None:
         create_dataset(processed_glob_path=Path(DEFAULT_BRATS_GLOB_PATH),
                        hdf5_out_dir=HDF5_OUT_FOLDER,
                        dataset_name=DEFAULT_DATASET_NAME,
-                       limit_n_samples=10,
+                       limit_n_samples=5,
                        do_t1=True,
                        do_t2=False,
                        do_seg=True)
