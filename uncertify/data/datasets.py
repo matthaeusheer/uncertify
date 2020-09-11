@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import torch
 import h5py
 import torchvision
 from torch.utils.data import DataLoader
