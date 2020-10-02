@@ -3,6 +3,8 @@ import argparse
 import glob
 from tqdm import tqdm
 from pathlib import Path
+import subprocess
+from pprint import pprint
 
 import numpy as np
 import h5py
@@ -14,16 +16,18 @@ from uncertify.data.preprocessing.histogram_matching.histogram_matching import M
 VALID_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
 BACKGROUND_VALUE = -3.5
 DEFAULT_BRATS_GLOB_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/*/*'
-HIST_REF_T1_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/HGG/Brats17_TCIA_437_1/Brats17_TCIA_437_1_t1_unbiased.nii.gz'
+HIST_REF_T1_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/sub-CC723395_T1w_unbiased.nii.gz'
 HIST_REF_T1_MASK_PATH = f'/scratch/maheer/code/uncertify/data/brats_preprocessing/Brats17_TCIA_105_1_t1_unbiased.nii.gz'
 HIST_REF_T2_PATH = f'to_be_done'
 HIST_REF_T2_MASK_PATH = f'to_be_done'
 HDF5_OUT_FOLDER = Path('/scratch/maheer/datasets/processed/')
 DEFAULT_DATASET_NAME = 'BraTS17'
+N4_EXECUTABLE = '/usr/bmicnas01/data-biwi-01/bmicdatasets/Sharing/N4'
 
 
 def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_samples: int = None,
                       process_t1w: bool = False, process_t2w: bool = False, process_segmentation: bool = True,
+                      do_bias_correction: bool = False, force_bias_correction: bool = False,
                       do_hist_match: bool = False, do_normalization: bool = False,
                       shuffle: bool = True, store_output: bool = True,
                       print_debug: bool = True) -> None:
@@ -58,6 +62,8 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
                              ref_mask_path=HIST_REF_T1_MASK_PATH,
                              do_hist_match=do_hist_match,
                              do_normalization=do_normalization,
+                             bias_correction=do_bias_correction,
+                             force_bias_correction=force_bias_correction,
                              print_debug=print_debug,
                              store_output=store_output)
         if process_t2w:
@@ -67,6 +73,8 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
                              ref_mask_path=HIST_REF_T2_MASK_PATH,
                              do_hist_match=do_hist_match,
                              do_normalization=do_normalization,
+                             bias_correction=do_bias_correction,
+                             force_bias_correction=force_bias_correction,
                              print_debug=print_debug,
                              store_output=store_output)
         if process_segmentation:
@@ -74,16 +82,39 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
                              sample_dir_path=sample_dir_path,
                              do_hist_match=False,
                              do_normalization=False,
+                             bias_correction=do_bias_correction,
+                             force_bias_correction=force_bias_correction,
                              print_debug=print_debug,
                              store_output=store_output)
 
 
 def process_modality(modality: str, sample_dir_path: str, ref_img_path: str = None, ref_mask_path: str = None,
                      do_hist_match: bool = False, do_normalization: bool = False,
-                     store_output: bool = True, print_debug: bool = True) -> None:
+                     store_output: bool = True, bias_correction: bool = True, force_bias_correction: bool = False,
+                     print_debug: bool = True) -> None:
     """Process the images for a modality and return the processed images."""
     assert modality in VALID_MODALITIES, f'Invalid modality given {modality}!'
-    nii_file_path = glob.glob(sample_dir_path + f"/*{modality}.nii.gz")[0]
+    file_name_orig_glob = f'*{modality}.nii.gz'
+    file_name_unbiased_glob = f"*{modality}_unbiased.nii.gz"
+    if bias_correction and modality != 'seg':
+        unbiased_glob_result = glob.glob(sample_dir_path + f'/' + file_name_unbiased_glob)
+        if len(unbiased_glob_result) == 0:
+            original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
+            run_bias_correction(Path(original_file_path))
+        else:
+            if force_bias_correction:
+                original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
+                run_bias_correction(Path(original_file_path))
+            else:
+                print(f'Using existing unbiased file.')
+    if modality == 'seg':
+        file_name_glob = f'*{modality}.nii.gz'
+    else:
+        if bias_correction:
+            file_name_glob = f"*{modality}_unbiased.nii.gz"
+        else:
+            file_name_glob = f'*{modality}.nii.gz'
+    nii_file_path = glob.glob(sample_dir_path + f'/' + file_name_glob)[0]
     if print_debug:
         print(f'Processing {modality} slices: {nii_file_path}')
     img: np.array = nib.load(nii_file_path).get_data()
@@ -108,11 +139,13 @@ def process_modality(modality: str, sample_dir_path: str, ref_img_path: str = No
 
     if store_output:
         nif_img = nib.Nifti1Image(img, np.eye(4))
-        save_path = nii_file_path.replace(f'{modality}.nii.gz', f'{modality}_processed.nii.gz')
+        original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
+        save_path = original_file_path.replace(f'{modality}.nii.gz', f'{modality}_processed.nii.gz')
+        print(f'Saved {modality} sample to {save_path}.')
         nib.save(nif_img, save_path)
         if modality != 'seg':  # would output the segmentation mask...
             nif_mask = nib.Nifti1Image(mask, np.eye(4))
-            save_path = nii_file_path.replace(f'{modality}.nii.gz', 'mask.nii.gz')
+            save_path = original_file_path.replace(f'{modality}.nii.gz', 'mask.nii.gz')
             nib.save(nif_mask, save_path)
         if print_debug:
             print(f'Saved processed .nii.gz sample (and mask) to {save_path}')
@@ -131,6 +164,16 @@ def create_masks(slices: np.ndarray) -> np.ndarray:
     """Get the masks for (already manipulated) sample slices."""
     mask = (slices != 0).astype('int')
     return mask
+
+
+def run_bias_correction(file_path: Path) -> None:
+    """Run bias correction on a single file. Creates a new file in the same location with '<name>_unbiased.nii.gz'."""
+    in_file_name = file_path.name
+    name_split = in_file_name.split('.', maxsplit=1)
+    out_file_name = name_split[0] + '_unbiased.' + name_split[1]
+    command = ' '.join([N4_EXECUTABLE, in_file_name, out_file_name])
+    print(f'Running bias correction: {command}')
+    subprocess.run(command, shell=True, cwd=file_path.parent)
 
 
 def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: str, limit_n_samples: int = None,
@@ -193,13 +236,9 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
             else:
                 h5py_file["Seg"].resize((h5py_file["Seg"].shape[0] + len(seg_img)), axis=0)
                 h5py_file["Seg"][-len(seg_img):] = seg_img
-            print(seg_img.shape)
-            print(np.min(seg_img))
-            print(np.max(seg_img))
         n_processed += 1
         if n_processed == limit_n_samples:
             break
-
     h5py_file.close()
     print('Done creating h5py dataset.')
 
@@ -210,42 +249,100 @@ def parse_args():
     parser.add_argument('-p',
                         '--pre-process',
                         action='store_true',
-                        default=False,
                         help='If set, performs pre-processing of the whole dataset. '
                              'Output for the respective modalities will be stored at the same folder like the '
                              'original sample with "processed" prepended before the .nii.gz ending.')
+
+    parser.add_argument('-g',
+                        '--no-histogram-matching',
+                        action='store_true',
+                        help='Perform histogram matching vs a reference sample.')
+
+    parser.add_argument('-n',
+                        '--no-normalization',
+                        action='store_true',
+                        help='Perform zero mean / unit variance normalization.')
+
+    parser.add_argument('-b',
+                        '--no-bias-correction',
+                        action='store_true',
+                        help='Perform bias correction during/before pre-processing. If unbiased version '
+                             'already present use this one unless --force-bias-correction is set.')
+
+    parser.add_argument('-f',
+                        '--force-bias-correction',
+                        action='store_true',
+                        help='If bias correction enabled (using -b) and a bias corrected version already exists, '
+                             'i.e. a "<file_name>_unbiased_nii.gz", only perform bias correction again when this '
+                             'flag is enabled, otherwise take the one present already.')
+
+    parser.add_argument('-s',
+                        '--no-output',
+                        action='store_true',
+                        help='Skip storing output into "<name>_processed.nii.gz" files '
+                             'at the same location during pre-processing step.')
+
+    parser.add_argument('-l',
+                        '--shuffle-pre-processing',
+                        action='store_true',
+                        help='Whether to shuffle the sampels during pre-processing.')
+
+    parser.add_argument('-t',
+                        '--limit-n-samples',
+                        type=int,
+                        default=None,
+                        help='Handy for debugging. Limits the processed samples to this number.')
+
     parser.add_argument('-c',
                         '--create-dataset',
                         action='store_true',
-                        default=False,
                         help='If set, creates an HDF5 dataset out of the processed dataset (see -p above).')
+
+    parser.add_argument('-m',
+                        '--modalities',
+                        nargs='+',
+                        default=['t1', 'seg'],
+                        choices=VALID_MODALITIES,
+                        help='List of modalities to process.')
+
+    parser.add_argument('-d',
+                        '--print-debug',
+                        action='store_true',
+                        help='If set, enables debug print information on stdout.')
+
     args = parser.parse_args()
+    # Evaluation and Processing of args
     if not any([args.pre_process, args.create_dataset]):
         raise ValueError(f'Choose either -p (pre-process), -c (create-dataset) or both. You have not chosen any.')
+    # Change the modalities args member such that it is a dict indicating whether to process it or not
+    args.modalities = {modality: modality in args.modalities for modality in VALID_MODALITIES}
     return args
 
 
 def main(args: argparse.Namespace) -> None:
-    # NOTE: At the moment the parameters are hard-coded, s.t. only T1 samples are used in the HDF5 dataset.
+    """We have to main """
+    pprint(args.__dict__)
     if args.pre_process:
-        run_preprocessing(process_t1w=True,
-                          process_t2w=False,
-                          process_segmentation=True,
-                          do_hist_match=True,
-                          do_normalization=True,
-                          store_output=True,
-                          shuffle=False,
-                          limit_n_samples=5,
-                          print_debug=True)
+        run_preprocessing(process_t1w=args.modalities['t1'],
+                          process_t2w=args.modalities['t2'],
+                          process_segmentation=args.modalities['seg'],
+                          do_bias_correction=not args.no_bias_correction,
+                          force_bias_correction=args.force_bias_correction,
+                          do_hist_match=not args.no_histogram_matching,
+                          do_normalization=not args.no_normalization,
+                          store_output=not args.no_output,
+                          shuffle=args.shuffle_pre_processing,
+                          limit_n_samples=args.limit_n_samples,
+                          print_debug=args.print_debug)
     if args.create_dataset:
         create_dataset(processed_glob_path=Path(DEFAULT_BRATS_GLOB_PATH),
                        hdf5_out_dir=HDF5_OUT_FOLDER,
-                       dataset_name=DEFAULT_DATASET_NAME,
-                       limit_n_samples=5,
-                       print_debug=True,
-                       do_t1=True,
-                       do_t2=False,
-                       do_seg=True)
+                       dataset_name='brats_hm_camcan',
+                       limit_n_samples=args.limit_n_samples,
+                       print_debug=args.print_debug,
+                       do_t1=args.modalities['t1'],
+                       do_t2=args.modalities['t2'],
+                       do_seg=args.modalities['seg'])
 
 
 if __name__ == "__main__":
