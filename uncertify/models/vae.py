@@ -99,23 +99,11 @@ class VariationalAutoEncoder(pl.LightningModule):
         n_latent_samples = 16
         latent_space_dim = 128
         latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, latent_space_dim, )))
+
         return dict()
 
     @staticmethod
-    def old_loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        """Loss function of Variational Autoencoder as stated in original 'Autoencoding Variational Bayes' paper.
-        Caution:
-            This function returns a tuple of the individual loss terms for easy logging. Need to add them up wen used.
-        """
-        _, _, img_height, img_width = x_in.shape
-        # reconstruction_loss = nn.BCEWithLogitsLoss(reduction='mean')(x_in, x_out)  # per pix
-        reconstruction_loss = torch_functional.l1_loss(x_out, x_in) / (img_width * img_height)
-        kld = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)  # mean over batches
-        total_loss = reconstruction_loss + kld
-        return total_loss, reconstruction_loss, kld
-
-    @staticmethod
-    def loss_function(reconstruction, observation, mu, log_std, kld_multiplier=1.0):
+    def loss_function(reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor, kld_multiplier: float = 1.0):
         # p(x|z)
         rec_dist = dist.Normal(reconstruction, 1.0)
         log_p_x_z = rec_dist.log_prob(observation)

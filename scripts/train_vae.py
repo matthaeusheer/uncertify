@@ -10,6 +10,7 @@ from torchvision.transforms.transforms import Compose
 
 import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
+from uncertify.models.simple_vae import SimpleVariationalAutoEncoder
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.models.vae_adaptive_cnn import Encoder, Decoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
@@ -44,6 +45,14 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=64,
         help='Batch size for training.'
+    )
+    parser.add_argument(
+        '-m',
+        '--model',
+        type=str,
+        default='vae',
+        choices=['vae', 'simple_vae'],
+        help='Which version of VAE to train.'
     )
     return parser.parse_args()
 
@@ -84,7 +93,12 @@ def main(args: argparse.Namespace) -> None:
                                                           batch_size=args.batch_size,
                                                           transform=transform,
                                                           num_workers=args.num_workers)
-    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+    if args.model == 'vae':
+        model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+    elif args.model == 'simple_vae':
+        model = SimpleVariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+    else:
+        raise ValueError(f'Unrecognized model version {args.model}')
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
 
 
