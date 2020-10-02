@@ -94,16 +94,21 @@ class VariationalAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self.val_counter)
         for name, param in self.named_parameters():
             self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
-        self.val_counter += 1
-        # Sample from latent space and check reconstructions
-        n_latent_samples = 16
-        latent_space_dim = 128
-        latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, latent_space_dim, )))
 
+        # Sample from latent space and check reconstructions
+        n_latent_samples = 32
+        with torch.no_grad():
+            latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM, ))).cuda()
+            latent_sample_reconstructions = self._decoder(latent_samples)
+            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0)
+            self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
+                                             latent_sample_reconstructions_grid, global_step=self.val_counter)
+        self.val_counter += 1
         return dict()
 
     @staticmethod
-    def loss_function(reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor, kld_multiplier: float = 1.0):
+    def loss_function(reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
+                      beta: float = 1.0):
         # p(x|z)
         rec_dist = dist.Normal(reconstruction, 1.0)
         log_p_x_z = rec_dist.log_prob(observation)
@@ -118,7 +123,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         # KL(q(z|x), p(z))
         kl_div = dist.kl_divergence(z_post, z_prior)
         kl_div = torch.mean(kl_div, dim=1)
-        kl_div = kld_multiplier * kl_div
+        kl_div = beta * kl_div
 
         # Take the mean over all batches
         variational_lower_bound = -kl_div + log_p_x_z
@@ -130,4 +135,4 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Pytorch-lightning function."""
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.parameters(), lr=2*1e-4)
