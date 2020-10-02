@@ -7,7 +7,7 @@ from sklearn.neighbors import KernelDensity
 from uncertify.visualization.plotting import setup_plt_figure
 from uncertify.utils.custom_types import Tensor
 
-from typing import Tuple, List, Iterable, Generator, Dict
+from typing import Tuple, List, Iterable, Generator, Dict, Union
 
 DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=True, bins=30)
 
@@ -15,7 +15,7 @@ DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=True, bins=
 def plot_multi_histogram(arrays: List[np.ndarray],
                          labels: List[str] = None,
                          plot_density: bool = True,
-                         kde_bandwidth: float = 0.005,
+                         kde_bandwidth: Union[float, List[float]] = 0.005,
                          show_data_ticks: bool = True,
                          hist_kwargs: dict = None,
                          **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
@@ -38,12 +38,15 @@ def plot_multi_histogram(arrays: List[np.ndarray],
     kde_x_values = np.linspace(min([min(arr) for arr in arrays]), max([max(arr) for arr in arrays]), 1000)
     colors = plt.cm.Dark2(np.linspace(0, 1, len(arrays)))
     for idx, array in enumerate(arrays):
-        ax.hist(array, label=labels[idx] if labels is not None else None, color=colors[idx], **hist_kwargs)
+        if plt_kwargs.get('show_histograms', True):
+            ax.hist(array, label=labels[idx] if labels is not None else None, color=colors[idx], **hist_kwargs)
         if plot_density:
-            kde = KernelDensity(bandwidth=kde_bandwidth, kernel='gaussian')
+            kde = KernelDensity(bandwidth=kde_bandwidth,
+                                kernel='gaussian')
             kde.fit(array.reshape(-1, 1))
             log_prob = kde.score_samples(kde_x_values[:, None])
-            ax.fill_between(kde_x_values, np.exp(log_prob), alpha=0.5, color=colors[idx])
+            ax.fill_between(kde_x_values, np.exp(log_prob), alpha=0.5, color=colors[idx],
+                            label=labels[idx] if labels is not None else None)
             if show_data_ticks:
                 ax.plot(array, np.full_like(array, -0.01), '|', c=colors[idx], markeredgewidth=1)
     if labels is not None:
@@ -87,6 +90,10 @@ def plot_loss_histograms(output_generators: Iterable[Generator[Dict[str, Tensor]
     for name, arr in rec_errors.items():
         rec_arrays.append(np.array(rec_errors[name]))
         rec_labels.append(name)
-    fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KL Divergence', **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error', **kwargs)
+    kde_bandwidth = kwargs.get('kde_bandwidth', None)
+    kwargs.pop('kde_bandwidth')
+    fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KL Divergence',
+                                     kde_bandwidth=kde_bandwidth[0], **kwargs)
+    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error',
+                                     kde_bandwidth=kde_bandwidth[1], **kwargs)
     return [(fig1, ax2), (fig2, ax2)]

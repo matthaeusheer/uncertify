@@ -27,14 +27,14 @@ def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwar
         grid = make_grid(
             torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor)), dim=2),
             padding=0)
-        imshow_grid(grid, one_channel=True, plt_show=True, figsize=(9, 8), axis='off', **kwargs)
+        imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
 def plot_camcan_batches(camcan_dataloader: DataLoader, plot_n_batches: int, **kwargs) -> None:
     LOG.info('Plotting CamCAN Dataset [scan only]')
     for sample in islice(camcan_dataloader, plot_n_batches):
         grid = make_grid(sample['scan'].type(torch.FloatTensor), padding=0)
-        imshow_grid(grid, one_channel=True, plt_show=True, figsize=(9, 8), axis='off', **kwargs)
+        imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
 def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int = 4000, cmap: str = 'Greys_r') -> None:
