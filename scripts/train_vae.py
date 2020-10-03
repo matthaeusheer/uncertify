@@ -4,7 +4,7 @@ import logging
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks import EarlyStopping
 import torchvision
 from torchvision.transforms.transforms import Compose
 
@@ -12,11 +12,8 @@ import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.simple_vae import SimpleVariationalAutoEncoder
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
-from uncertify.models.vae_adaptive_cnn import Encoder, Decoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
-from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform, \
-    NumpyNormalize01Transform, NumpyNormalizeTransform
-from uncertify.data.dict_transforms import *
+from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
 from uncertify.log import setup_logging
 from uncertify.common import DATA_DIR_PATH
 
@@ -62,15 +59,22 @@ def main(args: argparse.Namespace) -> None:
     logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name=Path(__file__).stem)
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
-                      'max_epochs': 20,
-                      'val_check_interval': 0.2,  # check (1 / value) * times per train epoch
+                      #'max_epochs': 20,
+                      'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
                       'distributed_backend': 'ddp',
-                      'limit_train_batches': 0.5,
-                      'limit_val_batches': 0.5,
+                      #'limit_train_batches': 0.5,
+                      #'limit_val_batches': 0.5,
                       'profiler': True,
                       'fast_dev_run': False}
-    trainer = pl.Trainer(**trainer_kwargs)
+    early_stop_callback = EarlyStopping(
+        monitor='avg_val_mean_total_loss',
+        min_delta=0.001,
+        patience=5,
+        verbose=False,
+        mode='min'
+    )
+    trainer = pl.Trainer(**trainer_kwargs, early_stop_callback=early_stop_callback)
 
     if args.dataset == 'mnist':
         transform = Compose([torchvision.transforms.Resize((128, 128)),

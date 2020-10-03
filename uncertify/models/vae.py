@@ -100,11 +100,12 @@ class VariationalAutoEncoder(pl.LightningModule):
         with torch.no_grad():
             latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM, ))).cuda()
             latent_sample_reconstructions = self._decoder(latent_samples)
-            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0)
+            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0,
+                                                                             normalize=True)
             self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
                                              latent_sample_reconstructions_grid, global_step=self.val_counter)
         self.val_counter += 1
-        return dict()
+        return losses
 
     @staticmethod
     def loss_function(reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
@@ -135,4 +136,4 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Pytorch-lightning function."""
-        return torch.optim.Adam(self.parameters(), lr=2*1e-4)
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
