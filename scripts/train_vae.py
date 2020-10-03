@@ -15,6 +15,7 @@ from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
 from uncertify.log import setup_logging
+from uncertify.models.beta_annealing import beta_config_factory
 from uncertify.common import DATA_DIR_PATH
 
 LOG = logging.getLogger(__name__)
@@ -51,6 +52,44 @@ def parse_args() -> argparse.Namespace:
         choices=['vae', 'simple_vae'],
         help='Which version of VAE to train.'
     )
+    parser.add_argument(
+        '-a',
+        '--annealing',
+        type=str,
+        default='monotonic',
+        choices=['constant', 'monotonic', 'cyclic'],
+        help='Which beta annealing strategy to choose.'
+    )
+    parser.add_argument(
+        '--beta-final',
+        type=float,
+        default=1.0,
+        help='Beta (KL) weight if constant of final value if monotonic or cyclic annealing.'
+    )
+    parser.add_argument(
+        '--beta-start',
+        type=float,
+        default=0.0,
+        help='Beta (KL weight) start / low value if monotonic or cyclic annealing.'
+    )
+    parser.add_argument(
+        '--final-train-step',
+        type=int,
+        default=2000,
+        help='Training step where final beta value is reached when doing monotonic annealing.'
+    )
+    parser.add_argument(
+        '--cycle-size',
+        type=int,
+        default=1000,
+        help='Cycle size in train steps.'
+    )
+    parser.add_argument(
+        '--cycle-size-const-fraction',
+        type=int,
+        default=0.5,
+        help='Fraction of steps during one cycle which is constant.'
+    )
     return parser.parse_args()
 
 
@@ -59,12 +98,11 @@ def main(args: argparse.Namespace) -> None:
     logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name=Path(__file__).stem)
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
-                      #'max_epochs': 20,
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
                       'distributed_backend': 'ddp',
-                      #'limit_train_batches': 0.5,
-                      #'limit_val_batches': 0.5,
+                      #'limit_train_batches': 0.1,
+                      #'limit_val_batches': 0.1,
                       'profiler': True,
                       'fast_dev_run': False}
     early_stop_callback = EarlyStopping(
@@ -97,8 +135,11 @@ def main(args: argparse.Namespace) -> None:
                                                           batch_size=args.batch_size,
                                                           transform=transform,
                                                           num_workers=args.num_workers)
+    beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
+                                      args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
     if args.model == 'vae':
-        model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+        model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
+                                       beta_config=beta_config)
     elif args.model == 'simple_vae':
         model = SimpleVariationalAutoEncoder(BaurEncoder(), BaurDecoder())
     else:
