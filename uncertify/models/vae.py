@@ -1,6 +1,8 @@
 """
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
+import dataclasses
+
 import numpy as np
 import torch
 from torch import nn
@@ -11,6 +13,8 @@ from torch.optim.optimizer import Optimizer
 import torch.distributions as dist
 
 from uncertify.models.gradient import Gradient
+from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing
+from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, CyclicBetaConfig
 from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict, Callable
@@ -19,19 +23,21 @@ LATENT_SPACE_DIM = 128
 
 
 class VariationalAutoEncoder(pl.LightningModule):
-    def __init__(self, encoder: nn.Module, decoder: nn.Module) -> None:
+    def __init__(self, encoder: nn.Module, decoder: nn.Module,
+                 beta_config: BetaConfig = ConstantBetaConfig(beta=1.0)) -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
         Args:
             encoder: the encoder module (can be pytorch or lightning module)
             decoder: the decoder module (can be pytorch or lightning module)
+            beta_config: configuration on how to handle the beta parameter (constant, monotonic or cyclic)
         """
         super().__init__()
         self._encoder = encoder
         self._decoder = decoder
         self._gradient_net = Gradient()
-        self._train_steps = 0
         self.val_counter = 0
         self._train_step_counter = 0
+        self._beta_config = beta_config
         self.save_hyperparameters('decoder', 'encoder')
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -54,18 +60,25 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
+            features)
         logger_losses = {'train_loss': total_loss,
                          'train_reconstruction_err': mean_rec_err,
                          'train_kld_dic': mean_kl_div}
-        self.logger.experiment.add_scalars('train_losses_vs_step', logger_losses, global_step=self._train_step_counter)
+        self.logger.experiment.add_scalars('train_losses_vs_step', logger_losses,
+                                           global_step=self._train_step_counter)
+        self.logger.experiment.add_scalar('beta', self._calculate_beta(self._train_step_counter),
+                                          global_step=self._train_step_counter)
+
         self._train_step_counter += 1
         return {'loss': total_loss}
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']  # some datasets (e.g. brats) holds also 'seg' batch
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu, log_var)
+        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
+            features)
+        total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu,
+                                                                                      log_var)
 
         return {'val_mean_total_loss': total_loss, 'val_mean_kl_div': mean_kl_div, 'val_mean_rec_err': mean_rec_err,
                 'reconstructed_batch': reconstruction, 'input_batch': features}
@@ -79,7 +92,6 @@ class VariationalAutoEncoder(pl.LightningModule):
                   'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
                   'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
         self.logger.experiment.add_scalars('avg_val_mean_losses', losses, global_step=self._train_step_counter)
-
         # Sample batches from from validation steps and visualize
         np.random.seed(0)  # Make sure we always use the same samples for visualization
         out_samples = np.random.choice(outputs, min(len(outputs), 4), replace=False)
@@ -98,7 +110,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         # Sample from latent space and check reconstructions
         n_latent_samples = 32
         with torch.no_grad():
-            latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM, ))).cuda()
+            latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM,))).cuda()
             latent_sample_reconstructions = self._decoder(latent_samples)
             latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0)
             self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
@@ -106,9 +118,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         self.val_counter += 1
         return dict()
 
-    @staticmethod
-    def loss_function(reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
-                      beta: float = 1.0):
+    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
+                      beta: float = 1.0, train_step: int = None):
         # p(x|z)
         rec_dist = dist.Normal(reconstruction, 1.0)
         log_p_x_z = rec_dist.log_prob(observation)
@@ -123,7 +134,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         # KL(q(z|x), p(z))
         kl_div = dist.kl_divergence(z_post, z_prior)
         kl_div = torch.mean(kl_div, dim=1)
-        kl_div = beta * kl_div
+
+        kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
         # Take the mean over all batches
         variational_lower_bound = -kl_div + log_p_x_z
@@ -135,4 +147,13 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Pytorch-lightning function."""
-        return torch.optim.Adam(self.parameters(), lr=2*1e-4)
+        return torch.optim.Adam(self.parameters(), lr=2 * 1e-4)
+
+    def _calculate_beta(self, train_step: int) -> float:
+        """Calculates the KL term for any strategy for a given training_step"""
+        if isinstance(self._beta_config, ConstantBetaConfig):
+            return self._beta_config.beta
+        elif isinstance(self._beta_config, MonotonicBetaConfig):
+            return monotonic_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        elif isinstance(self._beta_config, CyclicBetaConfig):
+            return cyclical_annealing(train_step, **dataclasses.asdict(self._beta_config))
