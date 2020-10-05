@@ -81,8 +81,8 @@ def cyclical_annealing(train_step: int, cycle_size: int, cycle_size_const_fracti
     beta_final           ---  ---  ---
                         /  | /  | /  |
     beta_start         /   |/   |/   | ...
-                      |--------------|
-                        cycle_size
+                      |----|
+                    cycle_size
     """
     first_const_step = math.ceil(cycle_size - cycle_size * cycle_size_const_fraction)  # within a cycle
     step_in_cycle = train_step % cycle_size
