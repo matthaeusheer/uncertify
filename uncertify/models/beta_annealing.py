@@ -109,10 +109,10 @@ def plot_annealing_schedules(n_train_steps: int, cycle_size: int):
     monotonic_betas = [monotonic_annealing(train_step, n_train_steps // 2) for train_step in range(n_train_steps)]
     ax.plot(range(n_train_steps), monotonic_betas, '-', linewidth=2, label='monotonic')
 
-    cyclic_betas = [cyclical_annealing(train_step, cycle_size) for train_step in range(n_train_steps)]
+    cyclic_betas = [cyclical_annealing(train_step, cycle_size, beta_final=1.025) for train_step in range(n_train_steps)]
     ax.plot(range(n_train_steps), cyclic_betas, '-', linewidth=2, label='cyclic')
 
-    sigmoid_betas = [sigmoid_annealing(train_step) for train_step in range(n_train_steps)]
+    sigmoid_betas = [sigmoid_annealing(train_step, beta_final=1.05) for train_step in range(n_train_steps)]
     ax.plot(range(n_train_steps), sigmoid_betas, '-', linewidth=2, label='sigmoid')
 
     ax.legend()
