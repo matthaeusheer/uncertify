@@ -1,7 +1,11 @@
 import math
+import logging
 from dataclasses import dataclass
 
+from uncertify.models.utils import generalized_logistic_curve
 from uncertify.visualization.plotting import setup_plt_figure
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,6 +74,12 @@ def monotonic_annealing(train_step: int, final_train_step: int,
         return slope * train_step + beta_start
 
 
+def sigmoid_annealing(train_step: int, beta_final: float = 1.0, beta_start: float = 0.0) -> float:
+    """Similar to monotonic annealing (check for Arguments) but instead of a monotonic increase us a sigmoid shape."""
+    # CAUTION: The parameters here are HARDCODED, if you need another behaviour, change it in code.
+    return generalized_logistic_curve(train_step, a=beta_start, k=beta_final, b=0.01, q=0.5, eta=0.05, c=1)
+
+
 def cyclical_annealing(train_step: int, cycle_size: int, cycle_size_const_fraction: float = 0.5,
                        beta_final: float = 1.0, beta_start: float = 0.0) -> float:
     """Calculate beta (KL term weight) as a function of the train step with cyclic annealing.
@@ -94,14 +104,15 @@ def cyclical_annealing(train_step: int, cycle_size: int, cycle_size_const_fracti
 
 
 def plot_annealing_schedules(n_train_steps: int, cycle_size: int):
-    # Monotonic annealing
-    betas = [monotonic_annealing(train_step, n_train_steps // 2) for train_step in range(n_train_steps)]
-    fig, ax = setup_plt_figure(figsize=(12, 6), title='Monotonic annealing schedule',
+    fig, ax = setup_plt_figure(figsize=(12, 6), title='Annealing schedules compared',
                                xlabel='Training step', ylabel=r'$\beta$')
-    ax.plot(range(n_train_steps), betas, '-', linewidth=2)
+    monotonic_betas = [monotonic_annealing(train_step, n_train_steps // 2) for train_step in range(n_train_steps)]
+    ax.plot(range(n_train_steps), monotonic_betas, '-', linewidth=2, label='monotonic')
 
-    # Cyclical annealing
-    betas = [cyclical_annealing(train_step, cycle_size) for train_step in range(n_train_steps)]
-    fig, ax = setup_plt_figure(figsize=(12, 6), title='Cyclical annealing schedule',
-                               xlabel='Training step', ylabel=r'$\beta$')
-    ax.plot(range(n_train_steps), betas, '-', linewidth=2)
+    cyclic_betas = [cyclical_annealing(train_step, cycle_size) for train_step in range(n_train_steps)]
+    ax.plot(range(n_train_steps), cyclic_betas, '-', linewidth=2, label='cyclic')
+
+    sigmoid_betas = [sigmoid_annealing(train_step) for train_step in range(n_train_steps)]
+    ax.plot(range(n_train_steps), sigmoid_betas, '-', linewidth=2, label='sigmoid')
+
+    ax.legend()

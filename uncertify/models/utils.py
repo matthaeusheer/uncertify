@@ -24,3 +24,9 @@ def convtranspose2d_output_shape(h_w, kernel_size=1, stride=1, pad=0, dilation=1
     out_height = (h_w[0] - 1) * stride[0] - sum(pad[0]) + dilation[0] * (kernel_size[0] - 1) + out_pad[0] + 1
     out_width = (h_w[1] - 1) * stride[1] - sum(pad[1]) + dilation[1] * (kernel_size[1] - 1) + out_pad[1] + 1
     return out_height, out_width
+
+
+def generalized_logistic_curve(t, a, k, b, eta, q, c=1):
+    """See https://en.wikipedia.org/wiki/Generalised_logistic_function."""
+    return a + (k - a) / math.pow((c + q * math.exp(-b * t)), 1.0 / eta)
+
