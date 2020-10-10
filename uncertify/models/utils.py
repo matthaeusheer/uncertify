@@ -8,18 +8,25 @@ def num2tuple(num):
 
 
 def conv2d_output_shape(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
+    """Calculates the output height and width of a feature map for a Conv2D operation."""
     h_w, kernel_size, stride, pad, dilation = num2tuple(h_w), num2tuple(kernel_size), num2tuple(stride), \
                                               num2tuple(pad), num2tuple(dilation)
     pad = num2tuple(pad[0]), num2tuple(pad[1])
-    h = math.floor((h_w[0] + sum(pad[0]) - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0] + 1)
-    w = math.floor((h_w[1] + sum(pad[1]) - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1] + 1)
-    return h, w
+    out_height = math.floor((h_w[0] + sum(pad[0]) - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0] + 1)
+    out_width = math.floor((h_w[1] + sum(pad[1]) - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1] + 1)
+    return out_height, out_width
 
 
-def convtransp2d_output_shape(h_w, kernel_size=1, stride=1, pad=0, dilation=1, out_pad=0):
-    h_w, kernel_size, stride, pad, dilation, out_pad = num2tuple(h_w), num2tuple(kernel_size), num2tuple(stride), \
-                                                       num2tuple(pad), num2tuple(dilation), num2tuple(out_pad)
+def convtranspose2d_output_shape(h_w, kernel_size=1, stride=1, pad=0, dilation=1, out_pad=0):
+    """Calculates the output height and width of a feature map for a ConvTranspose2D operation."""
+    h_w, kernel_size, stride, pad, dilation, out_pad = num2tuple(h_w), num2tuple(kernel_size), num2tuple(stride), num2tuple(pad), num2tuple(dilation), num2tuple(out_pad)
     pad = num2tuple(pad[0]), num2tuple(pad[1])
-    h = (h_w[0] - 1) * stride[0] - sum(pad[0]) + dilation[0] * (kernel_size[0] - 1) + out_pad[0] + 1
-    w = (h_w[1] - 1) * stride[1] - sum(pad[1]) + dilation[1] * (kernel_size[1] - 1) + out_pad[1] + 1
-    return h, w
+    out_height = (h_w[0] - 1) * stride[0] - sum(pad[0]) + dilation[0] * (kernel_size[0] - 1) + out_pad[0] + 1
+    out_width = (h_w[1] - 1) * stride[1] - sum(pad[1]) + dilation[1] * (kernel_size[1] - 1) + out_pad[1] + 1
+    return out_height, out_width
+
+
+def generalized_logistic_curve(t, a, k, b, eta, q, c=1):
+    """See https://en.wikipedia.org/wiki/Generalised_logistic_function."""
+    return a + (k - a) / math.pow((c + q * math.exp(-b * t)), 1.0 / eta)
+

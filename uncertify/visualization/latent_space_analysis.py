@@ -29,6 +29,8 @@ def plot_latent_reconstructions_one_dim_changing(trained_model: torch.nn.Module,
 def plot_latent_reconstructions_multiple_dims(model: torch.nn.Module, latent_space_dims: int = 128,
                                               n_samples_per_dim: int = 16,
                                               save_path: Path = None, **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """Plot latent space sample reconstructions for multiple dimensions, i.e. cover all cases where all dimensions
+    but one are fixed."""
     outputs = []
     sample_generator = latent_space_analysis.yield_samples_all_dims(latent_space_dims, n_samples_per_dim)
     for bp in tqdm(sample_generator, desc='Inferring latent space samples', total=latent_space_dims):
@@ -54,4 +56,17 @@ def plot_latent_reconstructions_2d_grid(model: torch.nn.Module, dim1: int, dim2:
                               add_colorbar=False, vmax=3, **kwargs)
     if save_path is not None:
         save_fig(fig, save_path)
+    return fig, ax
+
+
+def plot_random_latent_space_samples(model: torch.nn.Module, n_samples: int = 16,
+                                     latent_space_dims: int = 128, save_path: Path = None,
+                                     **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """Sample zero mean unit variance samples from latent space and visualize."""
+    latent_samples = torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dims,)))
+    output = infer_latent_space_samples(model, latent_samples)
+    fig, ax = plot_vae_output(output, figsize=(20, 20), one_channel=True, axis='off',
+                              add_colorbar=False, vmax=3, **kwargs)
+    if save_path is not None:
+        save_fig(fig, save_path, **kwargs)
     return fig, ax

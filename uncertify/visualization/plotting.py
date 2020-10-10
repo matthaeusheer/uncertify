@@ -19,6 +19,10 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         figsize: Tuple(float, float), width and height in inches, defaults to (6.4, 4.8)
         title: str, sets the center title for the figures axes
     """
+    font = {'family': 'normal',
+            'weight': 'bold',
+            'size': 12}
+    matplotlib.rc('font', **font)
     if 'figsize' in kwargs:
         fig = plt.figure(figsize=kwargs.get('figsize'))
     else:

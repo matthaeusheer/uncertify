@@ -29,12 +29,13 @@ def yield_reconstructed_batches(data_loader: DataLoader,
                                 residual_threshold: float = None,
                                 residual_fn: Callable = l1_distance,
                                 get_batch_fn: Callable = lambda batch: batch['scan'],
-                                print_statistics: bool = False) -> Generator[Dict[str, Tensor], None, None]:
+                                print_statistics: bool = False,
+                                progress_bar_suffix: str = '') -> Generator[Dict[str, Tensor], None, None]:
     """For some dataloader and a trained model, run the 'scan' tensors of the dataloader through the model
     and yield a tuple dicts of scan, reconstruction and (if present in dataloader) segmentation batches."""
     data_generator = itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader
     n_batches = max_batches if max_batches is not None else len(data_loader)
-    for batch in tqdm(data_generator, desc='Inferring batches', total=n_batches):
+    for batch in tqdm(data_generator, desc=f'Inferring batches {progress_bar_suffix}', total=n_batches):
         scan_batch = get_batch_fn(batch)
         # Run actual inference for batch
         inference_result = trained_model(scan_batch)

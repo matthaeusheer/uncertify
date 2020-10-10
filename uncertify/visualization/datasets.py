@@ -27,14 +27,14 @@ def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwar
         grid = make_grid(
             torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor)), dim=2),
             padding=0)
-        imshow_grid(grid, one_channel=True, plt_show=True, figsize=(9, 8), axis='off', **kwargs)
+        imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
 def plot_camcan_batches(camcan_dataloader: DataLoader, plot_n_batches: int, **kwargs) -> None:
     LOG.info('Plotting CamCAN Dataset [scan only]')
     for sample in islice(camcan_dataloader, plot_n_batches):
         grid = make_grid(sample['scan'].type(torch.FloatTensor), padding=0)
-        imshow_grid(grid, one_channel=True, plt_show=True, figsize=(9, 8), axis='off', **kwargs)
+        imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
 def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int = 4000, cmap: str = 'Greys_r') -> None:
@@ -50,8 +50,7 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
         masked_scan = np.where(mask.astype(bool), scan, np.zeros(scan.shape))
         masked_pixels = scan[mask.astype(bool)].flatten()
         datasets = [h5py_file[key] for key in keys] + [masked_scan]
-        keys += ['Masked_Scan']
-        for dataset_name, dataset, ax in zip(keys, datasets, np.transpose(axes)):
+        for dataset_name, dataset, ax in zip(keys + ['Masked_Scan'], datasets, np.transpose(axes)):
             if dataset_name != 'Masked_Scan':
                 array_2d = dataset[idx]
             else:  # actually not a dataset but simply an array already
@@ -63,10 +62,14 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             ax[0].axis('off')
             ax[0].set_title(dataset_name)
             ax[1].hist(array_2d if dataset_name != 'Masked_Scan' else masked_pixels, bins=30, density=True)
-            description = stats.describe(array_2d if dataset_name != 'Masked_Scan' else masked_pixels)
-            ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
-            print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
-                  f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
+            try:
+                description = stats.describe(array_2d if dataset_name != 'Masked_Scan' else masked_pixels)
+            except ValueError:
+                print(f'Found sample with empty mask. No statistics available.')
+            else:
+                ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
+                print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
+                      f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
         plt.tight_layout()
         plt.show()
 

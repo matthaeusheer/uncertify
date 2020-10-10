@@ -27,6 +27,7 @@ seaborn = "*"
 tqdm = "*"
 install = "*"
 scikit-plot = "*"
+nibabel = "*"
 
 [requires]
 python_version = "3.8"

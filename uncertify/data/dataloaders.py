@@ -1,11 +1,12 @@
 from enum import Enum
 import logging
+from pathlib import Path
 
 import torchvision
 from torch.utils.data import DataLoader
 
 from uncertify.data.np_transforms import NumpyReshapeTransform, Numpy2PILTransform
-from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset
+from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset, MnistDatasetWrapper
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Any, Optional
@@ -27,7 +28,7 @@ BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
 ])
 
 
-def dataloader_factory(dataset_type: DatasetType, batch_size: int,
+def dataloader_factory(dataset_type: DatasetType, batch_size: int, path: Path = None,
                        transform: Any = None, num_workers: int = 0,
                        shuffle_train: bool = True, shuffle_val: bool = False) -> Tuple[Optional[DataLoader],
                                                                                        Optional[DataLoader]]:
@@ -37,8 +38,9 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
         return (mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform),
                 mnist_val_dataloader(batch_size, num_workers, transform))
     elif dataset_type == DatasetType.BRATS17:
+        assert path is not None, f'BRATS17 needs a path in the factory!'
         return (None,
-                brats17_val_dataloader(batch_size, shuffle_val, num_workers, transform))
+                brats17_val_dataloader(path, batch_size, shuffle_val, num_workers, transform))
     elif dataset_type == DatasetType.CAMCAN:
         return (camcan_data_loader('train', batch_size, shuffle_train, num_workers, transform),
                 camcan_data_loader('val', batch_size, shuffle_val, num_workers, transform))
@@ -46,12 +48,12 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
         raise ValueError(f'DatasetType {dataset_type} not supported by this factory method.')
 
 
-def brats17_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0, transform: Any = None) -> DataLoader:
-    default_location = DATA_DIR_PATH / 'brats/brats_all_val.hdf5'
-    assert default_location.exists(), f'Default BraTS17 hdf5 file {default_location} does not exist!'
+def brats17_val_dataloader(hdf_path: Path, batch_size: int, shuffle: bool,
+                           num_workers: int = 0, transform: Any = None) -> DataLoader:
+    assert hdf_path.exists(), f'BraTS17 hdf5 file {hdf_path} does not exist!'
     if transform is None:
         transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
-    brats_val_dataset = Brats2017HDF5Dataset(hdf5_file_path=default_location, transform=transform)
+    brats_val_dataset = Brats2017HDF5Dataset(hdf5_file_path=hdf_path, transform=transform)
     return DataLoader(brats_val_dataset, batch_size=batch_size,
                       shuffle=shuffle, num_workers=num_workers)
 
@@ -84,7 +86,7 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                                            train=True,
                                            download=True,
                                            transform=transform)
-    return DataLoader(train_set,
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set),
                       batch_size=batch_size,
                       shuffle=shuffle,
                       num_workers=num_workers)
@@ -98,7 +100,7 @@ def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any =
                                          train=False,
                                          download=True,
                                          transform=transform)
-    return DataLoader(val_set,
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set),
                       batch_size=batch_size,
                       shuffle=False,
                       num_workers=num_workers)
