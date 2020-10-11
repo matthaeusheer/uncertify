@@ -6,15 +6,15 @@ import dataclasses
 import numpy as np
 import torch
 from torch import nn
-from torch.nn import functional as torch_functional
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
 import torch.distributions as dist
 
 from uncertify.models.gradient import Gradient
-from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing
-from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, CyclicBetaConfig
+from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing
+from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
+    CyclicBetaConfig, SigmoidBetaConfig
 from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict, Callable
@@ -24,7 +24,8 @@ LATENT_SPACE_DIM = 128
 
 class VariationalAutoEncoder(pl.LightningModule):
     def __init__(self, encoder: nn.Module, decoder: nn.Module,
-                 beta_config: BetaConfig = ConstantBetaConfig(beta=1.0)) -> None:
+                 beta_config: BetaConfig = ConstantBetaConfig(beta=1.0),
+                 n_m_factor: float = 1.0) -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
         Args:
             encoder: the encoder module (can be pytorch or lightning module)
@@ -39,6 +40,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._train_step_counter = 0
         self._beta_config = beta_config
         self.save_hyperparameters('decoder', 'encoder')
+        self._n_m_factor = n_m_factor
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
@@ -139,7 +141,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
         # Take the mean over all batches
-        variational_lower_bound = -kl_div + log_p_x_z
+        variational_lower_bound = (-kl_div + log_p_x_z) * self._n_m_factor
         total_loss = torch.mean(-variational_lower_bound)
         mean_kl_div = torch.mean(kl_div)
         mean_log_p_x_z = torch.mean(log_p_x_z)
@@ -158,4 +160,8 @@ class VariationalAutoEncoder(pl.LightningModule):
             return monotonic_annealing(train_step, **dataclasses.asdict(self._beta_config))
         elif isinstance(self._beta_config, CyclicBetaConfig):
             return cyclical_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        elif isinstance(self._beta_config, SigmoidBetaConfig):
+            return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        else:
+            raise RuntimeError(f'Beta config not supported.')
 

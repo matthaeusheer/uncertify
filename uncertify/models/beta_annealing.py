@@ -33,11 +33,17 @@ class CyclicBetaConfig(BetaConfig):
     beta_start: float
 
 
+@dataclass
+class SigmoidBetaConfig(BetaConfig):
+    beta_final: float
+    beta_start: float
+
+
 def beta_config_factory(config_type: str,
                         beta_final: float = 1.0, beta_start: float = 0.0,
                         final_train_step: int = None, cycle_size: int = None,
                         cycle_size_const_fraction: float = 0.5) -> BetaConfig:
-    assert config_type in ['monotonic', 'constant', 'cyclic'], f'Config type {config_type} not allowed.'
+    assert config_type in ['monotonic', 'constant', 'cyclic', 'sigmoid'], f'Config type {config_type} not allowed.'
     if config_type == 'constant':
         return ConstantBetaConfig(beta_final)
     if config_type == 'monotonic':
@@ -47,6 +53,9 @@ def beta_config_factory(config_type: str,
         assert cycle_size is not None
         assert cycle_size_const_fraction is not None
         return CyclicBetaConfig(cycle_size, cycle_size_const_fraction, beta_final, beta_start)
+    if config_type == 'sigmoid':
+        LOG.warning(f'Created sigmoid annealing config with hardcoded parameters.')
+        return SigmoidBetaConfig(beta_final, beta_start)
 
 
 def monotonic_annealing(train_step: int, final_train_step: int,

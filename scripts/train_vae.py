@@ -16,6 +16,7 @@ from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
 from uncertify.log import setup_logging
 from uncertify.models.beta_annealing import beta_config_factory
+from utils import ArgumentParserWithDefaults
 from uncertify.common import DATA_DIR_PATH
 
 LOG = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ LOG = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     """Use argparse to parse command line arguments and pass it on to the main function."""
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParserWithDefaults()
     parser.add_argument(
         '-d',
         '--dataset',
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
         '--annealing',
         type=str,
         default='monotonic',
-        choices=['constant', 'monotonic', 'cyclic'],
+        choices=['constant', 'monotonic', 'cyclic', 'sigmoid'],
         help='Which beta annealing strategy to choose.'
     )
     parser.add_argument(
@@ -139,7 +140,8 @@ def main(args: argparse.Namespace) -> None:
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
     if args.model == 'vae':
         model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
-                                       beta_config=beta_config)
+                                       beta_config=beta_config,
+                                       n_m_factor=len(train_dataloader.dataset)/train_dataloader.batch_size)
     elif args.model == 'simple_vae':
         model = SimpleVariationalAutoEncoder(BaurEncoder(), BaurDecoder())
     else:
