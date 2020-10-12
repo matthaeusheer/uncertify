@@ -15,7 +15,7 @@ from uncertify.data.preprocessing.histogram_matching.histogram_matching import M
 VALID_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
 BACKGROUND_VALUE = -3.5
 DEFAULT_BRATS_GLOB_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/*/*'
-HIST_REF_T1_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_CBICA_ASY_1_t1_unbiased.nii.gz'
+HIST_REF_T1_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_unbiased.nii.gz'
 HIST_REF_T1_MASK_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_mask_unbiased.nii.gz'
 HIST_REF_T2_PATH = f'to_be_done'
 HIST_REF_T2_MASK_PATH = f'to_be_done'
@@ -93,13 +93,13 @@ def process_modality(modality: str, sample_dir_path: str, ref_img_path: str = No
     file_name_orig_glob = f'*{modality}.nii.gz'
 
     # Bias correction
+    file_name_unbiased_glob = f"*{modality}_unbiased.nii.gz"
     if bias_correction and modality != 'seg':
-        file_name_unbiased_glob = f"*{modality}_unbiased.nii.gz"
         run_bias_correction(sample_dir_path, file_name_unbiased_glob, file_name_orig_glob,
                             force_bias_correction, print_debug)
 
     # Set file name we use to do further processing with
-    file_name_glob = f"*{modality}_unbiased.nii.gz" if bias_correction else file_name_orig_glob
+    file_name_glob = file_name_unbiased_glob if bias_correction else file_name_orig_glob
     nii_file_path = glob.glob(sample_dir_path + f'/' + file_name_glob)[0]  # Take first, only one should be found
     if print_debug:
         print(f'Processing {modality} slices: {nii_file_path}')
@@ -187,7 +187,7 @@ def run_bias_correction_single_file(file_path: Path, print_debug: bool = False) 
     if print_debug:
         print(f'Running bias correction: {command}')
     subprocess.run(command, shell=True, cwd=file_path.parent)
-    # Create a mask of the
+    # Create a mask of the unbiased original slices
     img: np.array = nib.load(file_path).get_fdata()
     mask = create_masks(img)
     out_mask_file_name = name_split[0] + '_mask_unbiased.' + name_split[1]
