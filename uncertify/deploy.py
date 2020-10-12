@@ -19,15 +19,23 @@ from typing import Generator, Dict, Tuple, Callable
 LOG = logging.getLogger(__name__)
 
 
-def l1_distance(t1: Tensor, t2: Tensor) -> Tensor:
-    return torch.abs(t2 - t1)
+def l1_distance(reconstruction: Tensor, original: Tensor) -> Tensor:
+    return torch.abs(original - reconstruction)
+
+
+def residual_l1_max(reconstruction: Tensor, original: Tensor) -> Tensor:
+    """l1 difference between original and reconstruction while only positive values in
+    the residual are considered, i.e. values below zero are clamped. That means only cases where bright
+    lesions could not be reconstructed are kept."""
+    residual = original - reconstruction
+    return torch.where(residual > 0.0, residual, torch.zeros_like(residual))
 
 
 def yield_reconstructed_batches(data_loader: DataLoader,
                                 trained_model: torch.nn.Module,
                                 max_batches: int = None,
                                 residual_threshold: float = None,
-                                residual_fn: Callable = l1_distance,
+                                residual_fn: Callable = residual_l1_max,
                                 get_batch_fn: Callable = lambda batch: batch['scan'],
                                 print_statistics: bool = False,
                                 progress_bar_suffix: str = '') -> Generator[Dict[str, Tensor], None, None]:
@@ -41,13 +49,20 @@ def yield_reconstructed_batches(data_loader: DataLoader,
         inference_result = trained_model(scan_batch)
         reconstruction_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
-        # Add image tensors to output
+        # Do residual calculation
         residual_batch = residual_fn(reconstruction_batch, scan_batch)
-        thresholded_batch = normalize_to_0_1(residual_batch)
-        if residual_threshold is not None:
-            thresholded_batch = threshold_batch_to_one_zero(thresholded_batch, residual_threshold)
-        output = {'scan': scan_batch, 'rec': reconstruction_batch, 'res': residual_batch, 'thresh': thresholded_batch,
+        residual_batch = normalize_to_0_1(residual_batch)
+
+        # Construct output
+        output = {'scan': scan_batch,
+                  'rec': reconstruction_batch,
+                  'res': residual_batch,
                   'latent_code': latent_code}
+
+        if residual_threshold is not None:
+            thresholded_batch = threshold_batch_to_one_zero(residual_batch, residual_threshold)
+            output['thresh'] = thresholded_batch
+
         try:
             if 'seg' in batch.keys():
                 # add segmentation if available
@@ -56,7 +71,7 @@ def yield_reconstructed_batches(data_loader: DataLoader,
                                             torch.zeros_like(batch['seg']))
             if 'mask' in batch.keys():
                 output['mask'] = batch['mask']
-        except AttributeError as error:
+        except AttributeError:
             # LOG.warning(f'Batch has no keys. Probably MNIST like. {error}')
             pass
 

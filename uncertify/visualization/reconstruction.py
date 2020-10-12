@@ -37,7 +37,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str
             scan = normalize_to_0_1(batch['scan'])
             reconstruction = normalize_to_0_1(batch['rec'])
             residual = normalize_to_0_1(batch['res'])
-            thresholded = normalize_to_0_1(batch['thresh'])
+            thresholded = batch['thresh']
             if 'seg' in batch.keys():
                 seg = normalize_to_0_1(batch['seg'])
                 stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)

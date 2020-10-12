@@ -4,7 +4,7 @@ import logging
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 import torchvision
 from torchvision.transforms.transforms import Compose
 
@@ -113,7 +113,13 @@ def main(args: argparse.Namespace) -> None:
         verbose=False,
         mode='min'
     )
-    trainer = pl.Trainer(**trainer_kwargs, early_stop_callback=early_stop_callback)
+    checkpoint_callback = ModelCheckpoint(
+        save_last=True,
+        verbose=True,
+        monitor='avg_val_mean_total_loss',
+        mode='min'
+    )
+    trainer = pl.Trainer(**trainer_kwargs, checkpoint_callback=checkpoint_callback)   #, early_stop_callback=early_stop_callback)
 
     if args.dataset == 'mnist':
         transform = Compose([torchvision.transforms.Resize((128, 128)),
@@ -139,9 +145,10 @@ def main(args: argparse.Namespace) -> None:
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
     if args.model == 'vae':
+        n_m_factor = 1.0  # len(train_dataloader.dataset) / train_dataloader.batch_size
         model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
                                        beta_config=beta_config,
-                                       n_m_factor=len(train_dataloader.dataset)/train_dataloader.batch_size)
+                                       n_m_factor=n_m_factor)
     elif args.model == 'simple_vae':
         model = SimpleVariationalAutoEncoder(BaurEncoder(), BaurDecoder())
     else:

@@ -6,6 +6,7 @@ import dataclasses
 import numpy as np
 import torch
 from torch import nn
+import torch.nn.functional as F
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
@@ -36,7 +37,6 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._encoder = encoder
         self._decoder = decoder
         self._gradient_net = Gradient()
-        self.val_counter = 0
         self._train_step_counter = 0
         self._beta_config = beta_config
         self.save_hyperparameters('decoder', 'encoder')
@@ -56,95 +56,105 @@ class VariationalAutoEncoder(pl.LightningModule):
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
         """Applying reparameterization trick."""
-        std = torch.exp(0.5 * log_var)  # log_var = log(sigma^2) = 2*log(sigma) -> sigma = exp(0.5*log_var)
+        std = torch.exp(0.5 * log_var)  # log_var = log(std^2) = 2*log(std) -> std = exp(0.5*log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
-            features)
-        logger_losses = {'train_loss': total_loss,
-                         'train_reconstruction_err': mean_rec_err,
-                         'train_kld_dic': mean_kl_div}
-        self.logger.experiment.add_scalars('train_losses_vs_step', logger_losses,
+
+        # Run batch through model and get losses
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+
+        # Log training losses to Tensorboard
+        train_loss_terms = {'train_reconstruction_error': mean_rec_err,
+                            'train_kl_div': mean_kl_div}
+        self.logger.experiment.add_scalar('train_total_loss', total_loss,
+                                          global_step=self._train_step_counter)
+        self.logger.experiment.add_scalars('train_loss_term', train_loss_terms,
                                            global_step=self._train_step_counter)
         self.logger.experiment.add_scalar('beta', self._calculate_beta(self._train_step_counter),
                                           global_step=self._train_step_counter)
-
         self._train_step_counter += 1
-        return {'loss': total_loss}
+        return {'loss': total_loss}  # w.r.t this will be optimized
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
-        features = batch['scan']  # some datasets (e.g. brats) holds also 'seg' batch
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
-            features)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu,
-                                                                                      log_var)
+        features = batch['scan']
 
-        return {'val_mean_total_loss': total_loss, 'val_mean_kl_div': mean_kl_div, 'val_mean_rec_err': mean_rec_err,
-                'reconstructed_batch': reconstruction, 'input_batch': features}
+        # Run validation batch through model and get losses
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+
+        # Those values will be tracked and can be accessed in validation_epoch_end
+        val_return_dict = {'val_total_loss': total_loss,
+                           'val_kl_div': mean_kl_div,
+                           'val_rec_err': mean_rec_err,
+                           'reconstructed_batch': rec_batch,
+                           'input_batch': features}
+        return val_return_dict
 
     def validation_epoch_end(self, outputs: List[Dict]) -> dict:
-        # Compute average validation loss
-        avg_val_losses = torch.stack([x['val_mean_total_loss'] for x in outputs])
-        avg_val_kld_losses = torch.stack([x['val_mean_kl_div'] for x in outputs])
-        avg_val_recon_losses = torch.stack([x['val_mean_rec_err'] for x in outputs])
-        losses = {'avg_val_mean_total_loss': avg_val_losses.mean(),
-                  'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
-                  'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
-        self.logger.experiment.add_scalars('avg_val_mean_losses', losses, global_step=self._train_step_counter)
+        # Compute average validation losses and log
+        avg_val_total_losses = torch.stack([x['val_total_loss'] for x in outputs])
+        avg_val_kld_losses = torch.stack([x['val_kl_div'] for x in outputs])
+        avg_val_recon_losses = torch.stack([x['val_rec_err'] for x in outputs])
+        self.logger.experiment.add_scalar('avg_val_mean_total_loss', avg_val_total_losses.mean(),
+                                          global_step=self._train_step_counter)
+        loss_terms = {'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
+                      'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
+        self.logger.experiment.add_scalars('avg_val_mean_loss_terms', loss_terms, global_step=self._train_step_counter)
+
         # Sample batches from from validation steps and visualize
         np.random.seed(0)  # Make sure we always use the same samples for visualization
         out_samples = np.random.choice(outputs, min(len(outputs), 4), replace=False)
         for idx, out_sample in enumerate(out_samples):
-            input_img_grid = torchvision.utils.make_grid(out_sample['input_batch'], normalize=True)
-            output_img_grid = torchvision.utils.make_grid(out_sample['reconstructed_batch'], normalize=True)
-            residuals = torch.abs(out_sample['reconstructed_batch'] - out_sample['input_batch'])
+            in_batch, rec_batch = out_sample['input_batch'], out_sample['reconstructed_batch']
+            input_img_grid = torchvision.utils.make_grid(in_batch, normalize=True)
+            output_img_grid = torchvision.utils.make_grid(rec_batch, normalize=True)
+            residuals = torch.abs(rec_batch - in_batch)
             residual_img_grid = torchvision.utils.make_grid(residuals, normalize=True)
             grad_residuals = self._gradient_net.forward(residuals)
             grad_diff_grid = torchvision.utils.make_grid(grad_residuals, normalize=True)
             grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
-            self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self.val_counter)
+            self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self._train_step_counter)
         for name, param in self.named_parameters():
-            self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
+            self.logger.experiment.add_histogram(name, param.data, global_step=self._train_step_counter)
 
         # Sample from latent space and check reconstructions
-        n_latent_samples = 32
+        n_latent_samples = 64
         with torch.no_grad():
             latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM,))).cuda()
             latent_sample_reconstructions = self._decoder(latent_samples)
-            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0,
+            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions,
+                                                                             padding=0,
                                                                              normalize=True)
             self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
-                                             latent_sample_reconstructions_grid, global_step=self.val_counter)
-        self.val_counter += 1
-        return losses
+                                             latent_sample_reconstructions_grid, global_step=self._train_step_counter)
+        return loss_terms
 
-    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
+    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
         # p(x|z)
         rec_dist = dist.Normal(reconstruction, 1.0)
         log_p_x_z = rec_dist.log_prob(observation)
-        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))
+        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each sample
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
 
         # q(z|x)
-        z_post = dist.Normal(mu, torch.exp(log_std))
+        z_post = dist.Normal(mu, torch.sqrt(torch.exp(log_var)))
 
         # KL(q(z|x), p(z))
         kl_div = dist.kl_divergence(z_post, z_prior)
-        kl_div = torch.mean(kl_div, dim=1)
-
+        kl_div = torch.mean(kl_div, dim=1)  # KL divergences as we would get them per sample in the batch
         kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
         # Take the mean over all batches
-        variational_lower_bound = (-kl_div + log_p_x_z) * self._n_m_factor
-        total_loss = torch.mean(-variational_lower_bound)
         mean_kl_div = torch.mean(kl_div)
         mean_log_p_x_z = torch.mean(log_p_x_z)
+
+        variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
+        total_loss = -variational_lower_bound
 
         return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
 
@@ -164,4 +174,3 @@ class VariationalAutoEncoder(pl.LightningModule):
             return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
         else:
             raise RuntimeError(f'Beta config not supported.')
-
