@@ -45,9 +45,9 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
         fig, axes = plt.subplots(ncols=len(keys) + 1, nrows=2, figsize=(12, 12))
         mask = h5py_file['Mask'][idx]
         scan = h5py_file['Scan'][idx]
-        min_val = np.min(scan)
-        max_val = np.max(scan)
         masked_scan = np.where(mask.astype(bool), scan, np.zeros(scan.shape))
+        min_val = np.min(masked_scan)
+        max_val = np.max(masked_scan)
         masked_pixels = scan[mask.astype(bool)].flatten()
         datasets = [h5py_file[key] for key in keys] + [masked_scan]
         for dataset_name, dataset, ax in zip(keys + ['Masked_Scan'], datasets, np.transpose(axes)):
@@ -67,7 +67,7 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             except ValueError:
                 print(f'Found sample with empty mask. No statistics available.')
             else:
-                ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
+cd co                   ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
                 print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
                       f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
         plt.tight_layout()
