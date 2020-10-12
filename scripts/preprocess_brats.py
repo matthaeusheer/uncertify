@@ -12,12 +12,11 @@ import nibabel as nib
 import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
 
-
 VALID_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
 BACKGROUND_VALUE = -3.5
 DEFAULT_BRATS_GLOB_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/*/*'
 HIST_REF_T1_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_CBICA_ASY_1_t1_unbiased.nii.gz'
-HIST_REF_T1_MASK_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_CBICA_ASY_1_mask.nii.gz'
+HIST_REF_T1_MASK_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_mask_unbiased.nii.gz'
 HIST_REF_T2_PATH = f'to_be_done'
 HIST_REF_T2_MASK_PATH = f'to_be_done'
 HDF5_OUT_FOLDER = Path('/scratch/maheer/datasets/processed/')
@@ -38,14 +37,6 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
             example, next to Brats17_TCIA_117_1_t1.nii.gz it will create Brats17_TCIA_117_1_t1_processed.nii.gz
             Those files are later read by the create_dataset function to create the HDF5 dataset.
     """
-    print(20 * '=')
-    print(f'Processing BraTS dataset at {DEFAULT_BRATS_GLOB_PATH}')
-    print(f'Modalities:')
-    print(f'\tT1: {process_t1w}')
-    print(f'\tT2: {process_t2w}')
-    print(f'\tSeg: {process_segmentation}')
-    print(20 * '=' + '\n')
-
     sample_dir_paths = glob.glob(brats_glob_path)
     sample_dir_paths = [item for item in sample_dir_paths if 'Brats17_2013' not in os.path.split(item)[-1]]
     if shuffle:
@@ -55,7 +46,7 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
 
     for sample_dir_path in tqdm(sample_dir_paths, desc='Processing patients'):
         if print_debug:
-            print(f' ------ Processing {sample_dir_path} ------')
+            print(f'\n ------ Processing {sample_dir_path} ------')
         if process_t1w:
             process_modality(modality='t1',
                              sample_dir_path=sample_dir_path,
@@ -85,7 +76,7 @@ def run_preprocessing(brats_glob_path: str = DEFAULT_BRATS_GLOB_PATH, limit_n_sa
                              sample_dir_path=sample_dir_path,
                              do_hist_match=False,
                              do_normalization=False,
-                             bias_correction=do_bias_correction,
+                             bias_correction=False,
                              force_bias_correction=force_bias_correction,
                              print_debug=print_debug,
                              do_store_output=do_store_output)
@@ -97,56 +88,46 @@ def process_modality(modality: str, sample_dir_path: str, ref_img_path: str = No
                      print_debug: bool = True) -> None:
     """Process the images for a modality and return the processed images."""
     assert modality in VALID_MODALITIES, f'Invalid modality given {modality}!'
+    if modality == 'seg':
+        assert bias_correction is False, f'Do not attempt to run bias correction on a segmentation map, fool!'
     file_name_orig_glob = f'*{modality}.nii.gz'
-    file_name_unbiased_glob = f"*{modality}_unbiased.nii.gz"
 
     # Bias correction
     if bias_correction and modality != 'seg':
+        file_name_unbiased_glob = f"*{modality}_unbiased.nii.gz"
         run_bias_correction(sample_dir_path, file_name_unbiased_glob, file_name_orig_glob,
                             force_bias_correction, print_debug)
 
     # Set file name we use to do further processing with
-    if modality == 'seg':
-        file_name_glob = f'*{modality}.nii.gz'
-    else:
-        if bias_correction:
-            file_name_glob = f"*{modality}_unbiased.nii.gz"
-        else:
-            file_name_glob = f'*{modality}.nii.gz'
-    nii_file_path = glob.glob(sample_dir_path + f'/' + file_name_glob)[0]
+    file_name_glob = f"*{modality}_unbiased.nii.gz" if bias_correction else file_name_orig_glob
+    nii_file_path = glob.glob(sample_dir_path + f'/' + file_name_glob)[0]  # Take first, only one should be found
     if print_debug:
         print(f'Processing {modality} slices: {nii_file_path}')
 
     # Load actual NII data file
-    img: np.array = nib.load(nii_file_path).get_fdata()
-    mask = create_masks(transform_image(img))
+    original_img: np.array = nib.load(nii_file_path).get_fdata()
+    original_mask = create_masks(original_img)
+    transformed_mask = create_masks(transform_image(original_img))
 
     # Histogram matching
     if do_hist_match:
-        img = run_histogram_matching(img, ref_img_path, ref_mask_path, print_debug)
+        original_img = run_histogram_matching(original_img, original_mask, ref_img_path, ref_mask_path, print_debug)
 
     # Image transformation (transpose, rotate, crop, etc.)
-    img = transform_image(img)
+    transformed_img = transform_image(original_img)
 
     # Normalization
     if do_normalization:
-        img = normalize_image(img, mask, normalization_method, BACKGROUND_VALUE, print_debug)
+        transformed_img = normalize_image(transformed_img, transformed_mask, normalization_method,
+                                          BACKGROUND_VALUE, print_debug)
+    # Crush segmentation labels [1, 4] all to 1
+    if modality == 'seg':
+        transformed_img = np.where(transformed_img > 0, np.ones(transformed_img.shape), np.zeros(transformed_img.shape))
 
     # Storing output
     if do_store_output:
-        nif_img = nib.Nifti1Image(img, np.eye(4))
-        original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
-        save_path = original_file_path.replace(f'{modality}.nii.gz', f'{modality}_processed.nii.gz')
-        if print_debug:
-            print(f'Saved {modality} sample to {save_path}.')
-        nib.save(nif_img, save_path)
-        if modality != 'seg':  # would output the segmentation mask...
-            nif_mask = nib.Nifti1Image(mask, np.eye(4))
-            save_path = original_file_path.replace(f'{modality}.nii.gz', 'mask.nii.gz')
-            nib.save(nif_mask, save_path)
-        if print_debug:
-            print(f'Saved processed .nii.gz sample (and mask) to {save_path}')
-    return
+        store_pre_processing_output(transformed_img, transformed_mask, sample_dir_path, file_name_orig_glob,
+                                    modality, print_debug)
 
 
 def transform_image(slices: np.ndarray) -> np.ndarray:
@@ -182,19 +163,39 @@ def run_bias_correction(sample_dir_path: str, file_name_unbiased_glob: str,
         original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
         if print_debug:
             print(f'Running bias correction for {original_file_path}')
-        run_bias_correction(Path(original_file_path))
+        run_bias_correction_single_file(Path(original_file_path), print_debug)
     else:
         if force_bias_correction:
             original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
             if print_debug:
                 print(f'Running forced bias correction for {original_file_path}')
-            run_bias_correction(Path(original_file_path))
+            run_bias_correction_single_file(Path(original_file_path), print_debug)
         else:
             if print_debug:
                 print(f'Using existing unbiased file.')
 
 
-def run_histogram_matching(img: np.ndarray, ref_img_path: str, ref_mask_path: str,
+def run_bias_correction_single_file(file_path: Path, print_debug: bool = False) -> None:
+    """Run bias correction on a single file.
+
+    Creates a new file in the same location with '<name>_unbiased.nii.gz'.
+    Creates a new file in the same location for mask '<name>_mask_unbiased.nii.gz'"""
+    in_file_name = file_path.name
+    name_split = in_file_name.split('.', maxsplit=1)
+    out_file_name = name_split[0] + '_unbiased.' + name_split[1]
+    command = ' '.join([N4_EXECUTABLE, in_file_name, out_file_name])
+    if print_debug:
+        print(f'Running bias correction: {command}')
+    subprocess.run(command, shell=True, cwd=file_path.parent)
+    # Create a mask of the
+    img: np.array = nib.load(file_path).get_fdata()
+    mask = create_masks(img)
+    out_mask_file_name = name_split[0] + '_mask_unbiased.' + name_split[1]
+    nif_mask_img = nib.Nifti1Image(mask, np.eye(4))
+    nib.save(nif_mask_img, file_path.parent / out_mask_file_name)
+
+
+def run_histogram_matching(img: np.ndarray, orig_mask: np.ndarray, ref_img_path: str, ref_mask_path: str,
                            print_debug: bool = False) -> np.ndarray:
     assert all([path is not None for path in [ref_img_path, ref_mask_path]]), f'Need to provide references for ' \
                                                                               f'histogram matching (mask & img)!'
@@ -202,28 +203,33 @@ def run_histogram_matching(img: np.ndarray, ref_img_path: str, ref_mask_path: st
         print(f'Performing histogram matching with {ref_img_path}')
     ref_img = nib.load(ref_img_path).get_fdata()
     ref_mask = nib.load(ref_mask_path).get_fdata()
-    matched_img = MatchHistogramsTwoImages(img, ref_img, L=200, nbins=246, begval=0.05,
-                                           finval=0.98,
-                                           train_mask=create_masks(ref_img),
-                                           test_mask=ref_mask)
+    matched_img = MatchHistogramsTwoImages(ref_img, img, L=200, nbins=246, begval=0.05, finval=0.98,
+                                           train_mask=ref_mask,
+                                           test_mask=orig_mask)
     return matched_img
 
+
+def store_pre_processing_output(img: np.ndarray, mask: np.ndarray, sample_dir_path: str, file_name_orig_glob: str,
+                                modality: str, print_debug: bool = False) -> None:
+    """Store the processed image slices and mask (both are transformed!) to the same folder as input."""
+    nif_img = nib.Nifti1Image(img, np.eye(4))
+    original_file_path = glob.glob(sample_dir_path + f'/' + file_name_orig_glob)[0]
+    save_path = original_file_path.replace(f'{modality}.nii.gz', f'{modality}_processed.nii.gz')
+    nib.save(nif_img, save_path)
+    if print_debug:
+        print(f'Saved {modality} sample to {save_path}.')
+    if modality != 'seg':  # would output the segmentation mask...
+        nif_mask = nib.Nifti1Image(mask, np.eye(4))
+        save_path = original_file_path.replace(f'{modality}.nii.gz', 'mask.nii.gz')
+        nib.save(nif_mask, save_path)
+    if print_debug:
+        print(f'Saved processed .nii.gz sample (and mask) to {save_path}')
 
 
 def create_masks(slices: np.ndarray) -> np.ndarray:
     """Get the masks for (already manipulated) sample slices."""
     mask = (slices != 0).astype('int')
     return mask
-
-
-def run_bias_correction(file_path: Path) -> None:
-    """Run bias correction on a single file. Creates a new file in the same location with '<name>_unbiased.nii.gz'."""
-    in_file_name = file_path.name
-    name_split = in_file_name.split('.', maxsplit=1)
-    out_file_name = name_split[0] + '_unbiased.' + name_split[1]
-    command = ' '.join([N4_EXECUTABLE, in_file_name, out_file_name])
-    print(f'Running bias correction: {command}')
-    subprocess.run(command, shell=True, cwd=file_path.parent)
 
 
 def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: str, limit_n_samples: int = None,
@@ -243,8 +249,11 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
         if print_debug:
             print(f'\nProcessing {sample_dir_path}')
         # mask - do always
-        mask_name = glob.glob(sample_dir_path + "/*mask.nii.gz")[0]
+        mask_name = os.path.join(sample_dir_path, f"{os.path.split(sample_dir_path)[-1]}_mask.nii.gz")
+        if print_debug:
+            print(f'Loading mask: {mask_name}')
         mask_img = nib.load(mask_name).get_fdata()
+        # TODO: Remove hardcoded 200*200 = 40000 size but make it dependent on width and height.
         mask_img = mask_img.reshape(-1, 200 * 200)
         if new_col:
             h5py_file.create_dataset('Mask', data=mask_img, maxshape=(None, 200 * 200))
@@ -289,8 +298,9 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
         n_processed += 1
         if n_processed == limit_n_samples:
             break
-    print(f'Done creating h5py dataset. Output: {h5py_file.filename}')
+    h5py_file_path = {h5py_file.filename}
     h5py_file.close()
+    print(f'Done creating h5py dataset. Output: {h5py_file_path}')
 
 
 def parse_args():
@@ -344,7 +354,7 @@ def parse_args():
     parser.add_argument('-l',
                         '--shuffle-pre-processing',
                         action='store_true',
-                        help='Whether to shuffle the sampels during pre-processing.')
+                        help='Whether to shuffle the samples during pre-processing.')
 
     parser.add_argument('-t',
                         '--limit-n-samples',
@@ -380,7 +390,10 @@ def parse_args():
 
 def main(args: argparse.Namespace) -> None:
     """We have to main """
+    print(20 * '=')
+    print(f'Processing BraTS dataset at {DEFAULT_BRATS_GLOB_PATH}')
     pprint(args.__dict__)
+    print(20 * '=' + '\n')
     if args.pre_process:
         run_preprocessing(process_t1w=args.modalities['t1'],
                           process_t2w=args.modalities['t2'],

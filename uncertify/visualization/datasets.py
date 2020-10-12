@@ -61,13 +61,13 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             plt.colorbar(im, cax=cax)
             ax[0].axis('off')
             ax[0].set_title(dataset_name)
-            ax[1].hist(array_2d if dataset_name != 'Masked_Scan' else masked_pixels, bins=30, density=True)
+            ax[1].hist(array_2d if dataset_name != 'Masked_Scan' else masked_pixels, bins=30, density=False)
             try:
                 description = stats.describe(array_2d if dataset_name != 'Masked_Scan' else masked_pixels)
             except ValueError:
                 print(f'Found sample with empty mask. No statistics available.')
             else:
-cd co                   ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
+                ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
                 print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
                       f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
         plt.tight_layout()
