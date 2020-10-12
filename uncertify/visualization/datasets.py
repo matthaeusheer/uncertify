@@ -45,9 +45,9 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
         fig, axes = plt.subplots(ncols=len(keys) + 1, nrows=2, figsize=(12, 12))
         mask = h5py_file['Mask'][idx]
         scan = h5py_file['Scan'][idx]
-        min_val = np.min(scan)
-        max_val = np.max(scan)
         masked_scan = np.where(mask.astype(bool), scan, np.zeros(scan.shape))
+        min_val = np.min(masked_scan)
+        max_val = np.max(masked_scan)
         masked_pixels = scan[mask.astype(bool)].flatten()
         datasets = [h5py_file[key] for key in keys] + [masked_scan]
         for dataset_name, dataset, ax in zip(keys + ['Masked_Scan'], datasets, np.transpose(axes)):
