@@ -67,7 +67,7 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             except ValueError:
                 print(f'Found sample with empty mask. No statistics available.')
             else:
-                ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
+cd co                   ax[1].set_title(f'mean: {description.mean:.2f}, var: {description.variance:.2f}')
                 print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
                       f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
         plt.tight_layout()
