@@ -26,7 +26,7 @@ def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwar
     for sample in islice(brats_dataloader, plot_n_batches):
         nrow_kwarg = {'nrow': kwargs.get('nrow')} if 'nrow' in kwargs.keys() else dict()
         grid = make_grid(
-            torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor)), dim=2),
+            torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor), sample['mask'].type(torch.FloatTensor)), dim=2),
             padding=0, **nrow_kwarg)
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
@@ -38,7 +38,8 @@ def plot_camcan_batches(camcan_dataloader: DataLoader, plot_n_batches: int, **kw
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
-def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int = 4000, cmap: str = 'Greys_r') -> None:
+def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int = 4000, cmap: str = 'Greys_r',
+                 vmin: float = None, vmax: float = None) -> None:
     """Plot samples and pixel distributions as they come out of the h5py file directly."""
     sample_indices = np.random.choice(dataset_length, n_samples)
     keys = sorted(list(h5py_file.keys()))
@@ -47,8 +48,8 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
         mask = h5py_file['mask'][idx]
         scan = h5py_file['scan'][idx]
         masked_scan = np.where(mask.astype(bool), scan, np.zeros(scan.shape))
-        min_val = np.min(masked_scan)
-        max_val = np.max(masked_scan)
+        min_val = np.min(masked_scan) if vmin is None else vmin
+        max_val = np.max(masked_scan) if vmax is None else vmax
         masked_pixels = scan[mask.astype(bool)].flatten()
         datasets = [h5py_file[key] for key in keys] + [masked_scan]
         for dataset_name, dataset, ax in zip(keys + ['masked_scan'], datasets, np.transpose(axes)):
@@ -62,7 +63,7 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             plt.colorbar(im, cax=cax)
             ax[0].axis('off')
             ax[0].set_title(dataset_name)
-            ax[1].hist(array_2d if dataset_name != 'sasked_scan' else masked_pixels, bins=30, density=False)
+            ax[1].hist(array_2d if dataset_name != 'masked_scan' else masked_pixels, bins=30, density=False)
             try:
                 description = stats.describe(array_2d if dataset_name != 'masked_scan' else masked_pixels)
             except ValueError:
