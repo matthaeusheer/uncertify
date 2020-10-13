@@ -25,7 +25,7 @@ class HDF5Dataset(Dataset):
 
     @cached_property
     def dataset_shape(self) -> Tuple[int, int]:
-        num_samples, flat_dimensions = h5py.File(self._hdf5_file_path, 'r')['Scan'].shape
+        num_samples, flat_dimensions = h5py.File(self._hdf5_file_path, 'r')['scan'].shape
         return num_samples, flat_dimensions
 
     def __len__(self) -> int:
@@ -38,9 +38,9 @@ class HDF5Dataset(Dataset):
 class Brats2017HDF5Dataset(HDF5Dataset):
     def __getitem__(self, idx) -> dict:
         h5py_file = h5py.File(self._hdf5_file_path, 'r')
-        scan_sample = h5py_file['Scan'][idx]
-        seg_sample = h5py_file['Seg'][idx]
-        mask_sample = h5py_file['Mask'][idx].astype(bool)
+        scan_sample = h5py_file['scan'][idx]
+        seg_sample = h5py_file['seg'][idx]
+        mask_sample = h5py_file['mask'][idx].astype(bool)
         for transform in self._transform.transforms:
             if isinstance(transform, DictSampleTransform):
                 out_dict = transform({'scan': scan_sample, 'seg': seg_sample, 'mask': mask_sample})
@@ -57,8 +57,8 @@ class Brats2017HDF5Dataset(HDF5Dataset):
 class CamCanHDF5Dataset(HDF5Dataset):
     def __getitem__(self, idx) -> dict:
         h5py_file = h5py.File(self._hdf5_file_path, 'r')
-        scan_sample = h5py_file['Scan'][idx]
-        mask_sample = h5py_file['Mask'][idx].astype(bool)
+        scan_sample = h5py_file['scan'][idx]
+        mask_sample = h5py_file['mask'][idx].astype(bool)
         if not any([isinstance(t, DictSampleTransform) for t in self._transform.transforms]):
             mask_sample = self._transform(mask_sample)
             scan_sample = self._transform(scan_sample)

@@ -10,15 +10,18 @@ import numpy as np
 import h5py
 import nibabel as nib
 import add_uncertify_to_path  # makes sure we can use the uncertify library
+from uncertify.utils.python_helpers import bool_to_str
 from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
+
+from typing import Tuple, List
 
 VALID_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
 BACKGROUND_VALUE = -3.5
 DEFAULT_BRATS_GLOB_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/*/*'
 HIST_REF_T1_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_unbiased.nii.gz'
 HIST_REF_T1_MASK_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_mask_unbiased.nii.gz'
-HIST_REF_T2_PATH = f'to_be_done'
-HIST_REF_T2_MASK_PATH = f'to_be_done'
+HIST_REF_T2_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t2_unbiased.nii.gz'
+HIST_REF_T2_MASK_PATH = f'/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t2_mask_unbiased.nii.gz'
 HDF5_OUT_FOLDER = Path('/scratch/maheer/datasets/processed/')
 DEFAULT_DATASET_NAME = 'BraTS17'
 N4_EXECUTABLE = '/usr/bmicnas01/data-biwi-01/bmicdatasets/Sharing/N4'
@@ -232,13 +235,14 @@ def create_masks(slices: np.ndarray) -> np.ndarray:
     return mask
 
 
-def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: str, limit_n_samples: int = None,
-                   do_t1: bool = False, do_t2: bool = False, do_seg: bool = False, print_debug: bool = True) -> None:
+def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, out_file_name: str, limit_n_samples: int = None,
+                   do_t1: bool = False, do_t2: bool = False, do_seg: bool = False,
+                   do_exclude_empty_slices: bool = False, args_dict: dict = None, print_debug: bool = True) -> None:
     """After pre-processing a whole dataset (writing processed images to disk), this function creates an HDF5
     dataset using h5py."""
     hdf5_out_dir.mkdir(parents=True, exist_ok=True)
-    h5py_file = h5py.File(str(hdf5_out_dir / f'{dataset_name}.hdf5'), 'w')
-    new_col = sum([do_t1, do_t2, do_seg]) + 1  # +1 for Mask
+    h5py_file = h5py.File(str(hdf5_out_dir / out_file_name), 'w')
+    new_col = sum([do_t1, do_t2, do_seg]) + 1  # +1 for mask, new_col whether a dataset has already been created
 
     sample_dir_paths = glob.glob(str(processed_glob_path))
     sample_dir_paths = [item for item in sample_dir_paths if 'Brats17_2013' not in os.path.split(item)[-1]]
@@ -248,66 +252,93 @@ def create_dataset(processed_glob_path: Path, hdf5_out_dir: Path, dataset_name: 
                                 total=limit_n_samples if limit_n_samples is not None else len(sample_dir_paths)):
         if print_debug:
             print(f'\nProcessing {sample_dir_path}')
-        # mask - do always
-        mask_name = os.path.join(sample_dir_path, f"{os.path.split(sample_dir_path)[-1]}_mask.nii.gz")
-        if print_debug:
-            print(f'Loading mask: {mask_name}')
-        mask_img = nib.load(mask_name).get_fdata()
-        # TODO: Remove hardcoded 200*200 = 40000 size but make it dependent on width and height.
-        mask_img = mask_img.reshape(-1, 200 * 200)
-        if new_col:
-            h5py_file.create_dataset('Mask', data=mask_img, maxshape=(None, 200 * 200))
-            new_col = new_col - 1
-        else:
-            h5py_file["Mask"].resize((h5py_file["Mask"].shape[0] + len(mask_img)), axis=0)
-            h5py_file["Mask"][-len(mask_img):] = mask_img
 
+        # Add mask which is always done
+        masks_path = os.path.join(sample_dir_path, f"{os.path.split(sample_dir_path)[-1]}_mask.nii.gz")
+        keep_indices = get_indices_to_keep(masks_path, do_exclude_empty_slices)
+        h5py_file, new_col = add_dataset_to_h5py(masks_path, h5py_file, 'mask', new_col, keep_indices)
+
+        # Add other modality (segmentation and possibly another one)
+        assert not (do_t1 and do_t2), f'It doesnt make sense do to T1 and T2 in one single dataset.
         if do_t1:
             t1_name = glob.glob(sample_dir_path + "/*t1_processed.nii.gz")[0]
-            t1_img = nib.load(t1_name).get_fdata()
-            t1_img = t1_img.reshape(-1, 200 * 200)
-            if new_col:
-                h5py_file.create_dataset('Scan', data=t1_img, maxshape=(None, 200 * 200))
-                new_col = new_col - 1
-            else:
-                h5py_file["Scan"].resize((h5py_file["Scan"].shape[0] + len(t1_img)), axis=0)
-                h5py_file["Scan"][-len(t1_img):] = t1_img
+            h5py_file, new_col = add_dataset_to_h5py(t1_name, h5py_file, 'scan', new_col, keep_indices)
 
         if do_t2:
             t2_name = glob.glob(sample_dir_path + "/*t2_processed.nii.gz")[0]
-            t2_img = nib.load(t2_name).get_fdata()
-            t2_img = t2_img.reshape(-1, 200 * 200)
-            if new_col:
-                h5py_file.create_dataset('Scan_T2w', data=t2_img, maxshape=(None, 200 * 200))
-                new_col = new_col - 1
-            else:
-                h5py_file["Scan_T2w"].resize((h5py_file["Scan_T2w"].shape[0] + len(t2_img)), axis=0)
-                h5py_file["Scan_T2w"][-len(t2_img):] = t2_img
+            h5py_file, new_col = add_dataset_to_h5py(t2_name, h5py_file, 'scan', new_col, keep_indices)
 
         if do_seg:
             seg_name = glob.glob(sample_dir_path + "/*seg_processed.nii.gz")[0]
-            seg_img = nib.load(seg_name).get_fdata()
+            h5py_file, new_col = add_dataset_to_h5py(seg_name, h5py_file, 'seg', new_col, keep_indices)
 
-            seg_img = seg_img.reshape(-1, 200 * 200).astype(float)
-            if new_col:
-                h5py_file.create_dataset('Seg', data=seg_img, maxshape=(None, 200 * 200))
-                new_col = new_col - 1
-            else:
-                h5py_file["Seg"].resize((h5py_file["Seg"].shape[0] + len(seg_img)), axis=0)
-                h5py_file["Seg"][-len(seg_img):] = seg_img
         n_processed += 1
         if n_processed == limit_n_samples:
             break
-    h5py_file_path = {h5py_file.filename}
+    # Store processing metadata
+    for key, value in args_dict.items():
+        h5py_file.attrs[key] = np.string_(value if type(value) is not bool else bool_to_str(value))
+    h5py_file_path = h5py_file.filename
     h5py_file.close()
     print(f'Done creating h5py dataset. Output: {h5py_file_path}')
+
+
+def add_dataset_to_h5py(file_path: str, h5py_file: h5py.File, dataset_key: str, new_col: int,
+                        keep_indices: List[int] = None) -> Tuple[h5py.File, int]:
+    """Adds a new sample (full patient) to a h5py file. New col determines if the sample is added to an existing
+    dataset or a new one is created within the h5py file."""
+    slices = nib.load(file_path).get_fdata()[keep_indices]
+    n_slices, height, width = slices.shape
+
+    slices = slices.reshape(n_slices, width * height)
+    if new_col:
+        h5py_file.create_dataset(dataset_key, data=slices, maxshape=(None, 200 * 200))
+        new_col = new_col - 1
+    else:
+        h5py_file[dataset_key].resize((h5py_file[dataset_key].shape[0] + len(slices)), axis=0)
+        h5py_file[dataset_key][-len(slices):] = slices
+    return h5py_file, new_col
+
+
+def get_indices_to_keep(mask_file_path: str, exclude_empty_slices: bool = False) -> List[int]:
+    """Returns a list of indices for a single patient mask slices where the mask is not empty."""
+    mask_slices = nib.load(mask_file_path).get_fdata()
+    if not exclude_empty_slices:
+        return list(range(len(mask_slices)))
+    else:
+        non_empty_slice_indices = []
+        for idx, img in enumerate(mask_slices):
+            if np.count_nonzero(img) != 0:
+                non_empty_slice_indices.append(idx)
+        return non_empty_slice_indices
+
+
+def create_file_name_from_args(args: argparse.Namespace, file_ending: str = '.hdf5') -> str:
+    """Given the arguments passed into this script, create a meaningful filename for the created HDF5 file.."""
+    args = args.__dict__  # get them in dictionary form
+    name = args['dataset_name']
+    for modality in [mod for mod in args['modalities'] if mod not in ['seg'] and args['modalities'][mod] is True]:
+        name += f'_{modality}'
+    if not args['no_histogram_matching']:
+        name += '_hm'
+    if not args['no_bias_correction']:
+        name += '_bc'
+    if not args['no_normalization']:
+        name += '_std' if args['normalization_method'] == 'standardize' else \
+            '_scale' if args['normalization_method'] == 'rescale' else ''
+    if args['limit_n_samples'] is not None:
+        name += f'_l{args["limit_n_samples"]}'
+    if args['exclude_empty_slices']:
+        name += '_xe'
+    name += file_ending
+    return name
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Script to process a BraTS dataset and / or create a '
                                                  'HDF5 dataset out of it.')
-    parser.add_argument('--name',
-                        help='Name of the dataset created. E.g. "brats_val".')
+    parser.add_argument('--dataset-name',
+                        help='Name of the dataset used. E.g. "brats17".')
 
     parser.add_argument('-p',
                         '--pre-process',
@@ -374,6 +405,13 @@ def parse_args():
                         choices=VALID_MODALITIES,
                         help='List of modalities to process.')
 
+    parser.add_argument('-x',
+                        '--exclude-empty-slices',
+                        action='store_true',
+                        help='If set, skips all empty slices when creating the hdf5 dataset. Note that in this case'
+                             'a patient will possibly have less then the standard amount of slices and this'
+                             'number may vary across patients.')
+
     parser.add_argument('-d',
                         '--print-debug',
                         action='store_true',
@@ -410,12 +448,14 @@ def main(args: argparse.Namespace) -> None:
     if args.create_dataset:
         create_dataset(processed_glob_path=Path(DEFAULT_BRATS_GLOB_PATH),
                        hdf5_out_dir=HDF5_OUT_FOLDER,
-                       dataset_name=args.name,
+                       out_file_name=create_file_name_from_args(args),
                        limit_n_samples=args.limit_n_samples,
                        print_debug=args.print_debug,
                        do_t1=args.modalities['t1'],
                        do_t2=args.modalities['t2'],
-                       do_seg=args.modalities['seg'])
+                       do_exclude_empty_slices=args.exclude_empty_slices,
+                       do_seg=args.modalities['seg'],
+                       args_dict=args.__dict__)
 
 
 if __name__ == "__main__":
