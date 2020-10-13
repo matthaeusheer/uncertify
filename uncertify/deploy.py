@@ -27,7 +27,7 @@ def residual_l1_max(reconstruction: Tensor, original: Tensor) -> Tensor:
     """l1 difference between original and reconstruction while only positive values in
     the residual are considered, i.e. values below zero are clamped. That means only cases where bright
     lesions could not be reconstructed are kept."""
-    residual = original - reconstruction
+    residual = reconstruction - original
     return torch.where(residual > 0.0, residual, torch.zeros_like(residual))
 
 

@@ -24,9 +24,10 @@ LOG = logging.getLogger(__name__)
 def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwargs) -> None:
     LOG.info('Plotting BraTS2017 Dataset [scan & segmentation]')
     for sample in islice(brats_dataloader, plot_n_batches):
+        nrow_kwarg = {'nrow': kwargs.get('nrow')} if 'nrow' in kwargs.keys() else dict()
         grid = make_grid(
             torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor)), dim=2),
-            padding=0)
+            padding=0, **nrow_kwarg)
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
 
 
@@ -43,15 +44,15 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
     keys = sorted(list(h5py_file.keys()))
     for counter, idx in enumerate(sample_indices):
         fig, axes = plt.subplots(ncols=len(keys) + 1, nrows=2, figsize=(12, 12))
-        mask = h5py_file['Mask'][idx]
-        scan = h5py_file['Scan'][idx]
+        mask = h5py_file['mask'][idx]
+        scan = h5py_file['scan'][idx]
         masked_scan = np.where(mask.astype(bool), scan, np.zeros(scan.shape))
         min_val = np.min(masked_scan)
         max_val = np.max(masked_scan)
         masked_pixels = scan[mask.astype(bool)].flatten()
         datasets = [h5py_file[key] for key in keys] + [masked_scan]
-        for dataset_name, dataset, ax in zip(keys + ['Masked_Scan'], datasets, np.transpose(axes)):
-            if dataset_name != 'Masked_Scan':
+        for dataset_name, dataset, ax in zip(keys + ['masked_scan'], datasets, np.transpose(axes)):
+            if dataset_name != 'masked_scan':
                 array_2d = dataset[idx]
             else:  # actually not a dataset but simply an array already
                 array_2d = dataset
@@ -61,9 +62,9 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
             plt.colorbar(im, cax=cax)
             ax[0].axis('off')
             ax[0].set_title(dataset_name)
-            ax[1].hist(array_2d if dataset_name != 'Masked_Scan' else masked_pixels, bins=30, density=False)
+            ax[1].hist(array_2d if dataset_name != 'sasked_scan' else masked_pixels, bins=30, density=False)
             try:
-                description = stats.describe(array_2d if dataset_name != 'Masked_Scan' else masked_pixels)
+                description = stats.describe(array_2d if dataset_name != 'masked_scan' else masked_pixels)
             except ValueError:
                 print(f'Found sample with empty mask. No statistics available.')
             else:
