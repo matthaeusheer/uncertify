@@ -1,3 +1,4 @@
+import os
 import argparse
 from pathlib import Path
 from pprint import pprint
@@ -165,6 +166,7 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
     run_config = preprocess_config_factory(parse_args(), dataset_type='camcan')
     pprint(run_config.__dict__)
     main_create_hdf5_dataset(run_config)
