@@ -5,92 +5,29 @@ from tqdm import tqdm
 from pathlib import Path
 import subprocess
 from pprint import pprint
-from dataclasses import dataclass
 
 import numpy as np
 import h5py
 import nibabel as nib
-import add_uncertify_to_path  # makes sure we can use the uncertify library
+
+import add_uncertify_to_path
+from uncertify.data.preprocessing.preprocessing_config import BratsConfig, preprocess_config_factory
+from uncertify.data.preprocessing.processing_funcs import transform_images_brats
+from uncertify.data.preprocessing.processing_funcs import normalize_images
+from uncertify.data.preprocessing.processing_funcs import run_histogram_matching
+from uncertify.data.preprocessing.processing_funcs import create_masks
+from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
+from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.utils.python_helpers import bool_to_str
-from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
+from uncertify.data.preprocessing.preprocessing_config import VALID_BRATS_MODALITIES, HDF5_OUT_FOLDER, N4_EXECUTABLE_PATH
 
-from typing import Tuple, List, Dict
+from typing import Tuple, List
 
-VALID_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
-BACKGROUND_VALUE = -3.5
-DEFAULT_BRATS_GLOB_PATH = f'/scratch/maheer/datasets/raw/BraTS2017/training/*/*'
+DEFAULT_DATASET_NAME    = 'BraTS17'
 DEFAULT_BRATS_ROOT_PATH = Path('/scratch/maheer/datasets/raw/BraTS2017/training')
-HIST_REF_T1_PATH = Path('/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_unbiased.nii.gz')
-HIST_REF_T1_MASK_PATH = Path(
-    '/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t1_unbiased_mask.nii.gz')
-HIST_REF_T2_PATH = Path('/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t2_unbiased.nii.gz')
-HIST_REF_T2_MASK_PATH = Path(
-    '/scratch_net/samuylov/maheer/datasets/reference/Brats17_TCIA_607_1_t2_mask_unbiased.nii.gz')
-HDF5_OUT_FOLDER = Path('/scratch/maheer/datasets/processed/')
-DEFAULT_DATASET_NAME = 'BraTS17'
-N4_EXECUTABLE_PATH = Path('/usr/bmicnas01/data-biwi-01/bmicdatasets/Sharing/N4')
 
 
-@dataclass
-class PreprocessConfig:
-    """A single config which gets populated via the parsed command line arguments used throughout a processing run."""
-    dataset_name: str
-    dataset_root_path: Path
-    do_pre_processing: bool
-    do_create_dataset: bool
-    modalities: Dict[str, bool]
-    limit_to_n_samples: int
-    exclude_empty_slices: bool
-    do_bias_correction: bool
-    force_bias_correction: bool
-    do_histogram_matching: bool
-    ref_paths: Dict[str, Dict[str, Path]]
-    do_normalization: bool
-    normalization_method: str
-    shuffle_pre_processing: bool
-    background_value: float
-    hdf5_out_folder_path: Path
-    n4_executable_path: Path
-    store_pre_processing_output: bool
-    print_debug: bool
-
-
-def preprocess_config_factory(args: argparse.Namespace) -> PreprocessConfig:
-    """Factory method to create a pre-processing config based on the parsed command line arguments."""
-    config = PreprocessConfig(
-        dataset_name=args.dataset_name,
-        dataset_root_path=args.dataset_root_path,
-        do_pre_processing=args.pre_process,
-        do_create_dataset=args.create_dataset,
-        modalities={modality: modality in args.modalities for modality in VALID_MODALITIES},
-        limit_to_n_samples=args.limit_n_samples,
-        exclude_empty_slices=args.exclude_empty_slices,
-        do_bias_correction=not args.no_bias_correction,
-        force_bias_correction=args.force_bias_correction,
-        do_histogram_matching=not args.no_histogram_matching,
-        ref_paths={'t1': {'img': HIST_REF_T1_PATH,
-                          'mask': HIST_REF_T1_MASK_PATH},
-                   't2': {'img': HIST_REF_T2_PATH,
-                          'mask': HIST_REF_T2_MASK_PATH}
-                   },
-        do_normalization=not args.no_normalization,
-        normalization_method=args.normalization_method,
-        shuffle_pre_processing=args.shuffle_pre_processing,
-        background_value=BACKGROUND_VALUE,
-        hdf5_out_folder_path=args.hdf5_out_dir_path,
-        n4_executable_path=N4_EXECUTABLE_PATH,
-        store_pre_processing_output=not args.no_output,
-        print_debug=args.print_debug
-    )
-    return config
-
-
-def validate_preprocess_config(config: PreprocessConfig) -> PreprocessConfig:
-    """Validates that the config can produce a valid pre-processing run and return the valid config."""
-    return config
-
-
-def run_preprocessing(config: PreprocessConfig) -> None:
+def run_preprocessing(config: BratsConfig) -> None:
     """Main pre-processing function which performs the pre-processing pipeline for all modalities and patients.
 
     Note:   This method creates additional output files in the original BraTS data folder. That is, for
@@ -113,7 +50,7 @@ def run_preprocessing(config: PreprocessConfig) -> None:
             process_modality(modality=modality, sample_dir_path=sample_dir_path, config=config)
 
 
-def process_modality(modality: str, sample_dir_path: Path, config: PreprocessConfig) -> None:
+def process_modality(modality: str, sample_dir_path: Path, config: BratsConfig) -> None:
     """Process the images for a modality and store processed nii files at same location like originals.
 
     Without un-biasing output file names will be <sample_dir_name>_<modality>.nii.gz.
@@ -137,23 +74,21 @@ def process_modality(modality: str, sample_dir_path: Path, config: PreprocessCon
     # Load actual NII data file
     slices: np.array = nib.load(nii_file_path).get_fdata()
     original_mask = create_masks(slices)
-    transformed_mask = create_masks(transform_image(slices))
+    transformed_mask = create_masks(transform_images_brats(slices))
 
     # Histogram matching
     if config.do_histogram_matching and modality != 'seg':
-        slices = run_histogram_matching(slices,
-                                        original_mask,
-                                        str(config.ref_paths[modality]['img']),
-                                        str(config.ref_paths[modality]['mask']),
-                                        config.print_debug)
+        ref_img = nib.load(config.ref_paths[modality]['img']).get_fdata()
+        ref_mask = nib.load(config.ref_paths[modality]['mask']).get_fdata()
+        slices = run_histogram_matching(slices, original_mask, ref_img, ref_mask, config.print_debug)
 
     # Image transformation (transpose, rotate, crop, etc.)
-    transformed_slices = transform_image(slices)
+    transformed_slices = transform_images_brats(slices)
 
     # Normalization
     if config.do_normalization and modality != 'seg':
-        transformed_slices = normalize_image(transformed_slices, transformed_mask, config.normalization_method,
-                                             config.background_value, config.print_debug)
+        transformed_slices = normalize_images(transformed_slices, transformed_mask, config.normalization_method,
+                                              config.background_value, config.print_debug)
     # Crush segmentation labels [1, 4] all to 1
     if modality == 'seg':
         transformed_slices = np.where(transformed_slices > 0, np.ones(transformed_slices.shape),
@@ -165,33 +100,7 @@ def process_modality(modality: str, sample_dir_path: Path, config: PreprocessCon
                                     config.do_bias_correction, config.print_debug)
 
 
-def transform_image(slices: np.ndarray) -> np.ndarray:
-    """Do all manipulations to the raw numpy array like transposing, rotation etc."""
-    slices = np.transpose(slices, axes=[2, 0, 1])  # makes dimensions to be [slice, width, height]?
-    slices = np.rot90(slices, k=1, axes=(2, 1))  # rotates once in the (2, 1) plane, i.e. width-height-plane
-    slices = slices[:, 27:227, 20:220]  # arbitrary numbers crop
-    return slices
-
-
-def normalize_image(slices: np.ndarray, masks: np.ndarray, normalization_method: str, background_value: float = None,
-                    print_debug: bool = False) -> np.ndarray:
-    """Performs normalization on all slices of  patient. Mean / max / min values are calculated per patient."""
-    if print_debug:
-        print(f'Performing normalization (zero mean, unit variance).')
-    if normalization_method == 'standardize':
-        slices = (slices - slices[masks != 0].mean()) / slices[masks != 0].std()
-    elif normalization_method == 'rescale':
-        slices = (slices - slices[masks != 0].min()) / (slices[masks != 0].max() - slices[masks != 0].min())
-    else:
-        raise ValueError(f'Normalization method "{normalization_method}" unknown.')
-    if background_value is not None:
-        if print_debug:
-            print(f'Set background to {BACKGROUND_VALUE}')
-        slices[masks == 0] = BACKGROUND_VALUE
-    return slices
-
-
-def run_bias_correction(dir_path: Path, in_file_name: str, out_file_name: str, modality: str, config: PreprocessConfig) -> None:
+def run_bias_correction(dir_path: Path, in_file_name: str, out_file_name: str, modality: str, config: BratsConfig) -> None:
     """Depending on setting regarding forcing the bias correction, run it for some modality."""
     if not (dir_path / out_file_name).exists():
         run_bias_correction_single_file(dir_path, in_file_name, out_file_name, modality, config.print_debug)
@@ -223,18 +132,6 @@ def run_bias_correction_single_file(dir_path: Path, in_file_name: str, out_file_
         print(f'Saved unbiased mask: {out_mask_name}')
 
 
-def run_histogram_matching(img: np.ndarray, orig_mask: np.ndarray, ref_img_path: str, ref_mask_path: str,
-                           print_debug: bool = False) -> np.ndarray:
-    if print_debug:
-        print(f'Performing histogram matching with {ref_img_path}')
-    ref_img = nib.load(ref_img_path).get_fdata()
-    ref_mask = nib.load(ref_mask_path).get_fdata()
-    matched_img = MatchHistogramsTwoImages(ref_img, img, L=200, nbins=246, begval=0.05, finval=0.98,
-                                           train_mask=ref_mask,
-                                           test_mask=orig_mask)
-    return matched_img
-
-
 def store_pre_processing_output(slices: np.ndarray, masks: np.ndarray, sample_dir_path: Path,
                                 modality: str, is_unbiased: bool, print_debug: bool = False) -> None:
     """Store the processed image slices and mask (both are transformed!) to the same folder as input."""
@@ -255,17 +152,11 @@ def store_pre_processing_output(slices: np.ndarray, masks: np.ndarray, sample_di
         print(f'Saved {modality} mask sample to {sample_dir_path / out_file_name_mask}.')
 
 
-def create_masks(slices: np.ndarray) -> np.ndarray:
-    """Get the masks for (already manipulated) sample slices."""
-    mask = (slices != 0).astype('int')
-    return mask
-
-
-def create_dataset(config: PreprocessConfig) -> None:
+def create_dataset(config: BratsConfig) -> None:
     """After pre-processing a whole dataset (writing processed images to disk), this function creates an HDF5
     dataset using h5py."""
     config.hdf5_out_folder_path.mkdir(parents=True, exist_ok=True)
-    h5py_file = h5py.File(str(config.hdf5_out_folder_path / create_dataset_name(config)), 'w')
+    h5py_file = h5py.File(str(config.hdf5_out_folder_path / create_hdf5_file_name(config)), 'w')
     # +1 for mask, new_col whether a dataset has already been created
     new_col = sum([config.modalities['t1'], config.modalities['t2'], config.modalities['seg']]) + 1
 
@@ -283,7 +174,7 @@ def create_dataset(config: PreprocessConfig) -> None:
         if config.do_histogram_matching:
             if sample_dir_path.name in config.ref_paths[image_modality]['img'].name:
                 n_processed += 1  # Could encounter a sample which we have not processed yet. Dataset will be size - 1
-                continue # Exclude sample we match against!
+                continue  # Exclude sample we match against!
         for modality in [mod for mod in config.modalities if config.modalities[mod] is True]:
 
             # Add mask which is always done
@@ -319,7 +210,7 @@ def create_dataset(config: PreprocessConfig) -> None:
     print(f'Done creating h5py dataset. Output: {h5py_file_path}')
 
 
-def get_image_modality(config: PreprocessConfig) -> str:
+def get_image_modality(config: BratsConfig) -> str:
     """Only one image modality per dataset is allowed. Get this one."""
     modalities_dict = config.modalities
     # TODO: This is rather dangerous.
@@ -344,19 +235,6 @@ def add_dataset_to_h5py(file_path: str, h5py_file: h5py.File, dataset_key: str, 
     return h5py_file, new_col
 
 
-def get_indices_to_keep(mask_file_path: str, exclude_empty_slices: bool = False) -> List[int]:
-    """Returns a list of indices for a single patient mask slices where the mask is not empty."""
-    mask_slices = nib.load(mask_file_path).get_fdata()
-    if not exclude_empty_slices:
-        return list(range(len(mask_slices)))
-    else:
-        non_empty_slice_indices = []
-        for idx, img in enumerate(mask_slices):
-            if np.count_nonzero(img) != 0:
-                non_empty_slice_indices.append(idx)
-        return non_empty_slice_indices
-
-
 def create_nii_file_name(sample_dir_name: str, modality: str, is_mask: bool, is_unbiased: bool,
                          is_processed: bool) -> str:
     """File name which will be created for pre-processed output, e.g. Brats17_TCIA_131_1_t1_unbiased_processed.nii.gz"""
@@ -366,26 +244,6 @@ def create_nii_file_name(sample_dir_name: str, modality: str, is_mask: bool, is_
                 f'{"_mask" if is_mask else ""}' \
                 f'{"_processed" if is_processed else ""}.nii.gz'
     return file_name
-
-
-def create_dataset_name(config: PreprocessConfig, file_ending: str = '.hdf5') -> str:
-    """Given the arguments passed into this script, create a meaningful filename for the created HDF5 file.."""
-    name = config.dataset_name
-    for modality in [mod for mod in config.modalities.keys() if mod not in ['seg'] and config.modalities[mod] is True]:
-        name += f'_{modality}'
-    if config.do_histogram_matching:
-        name += '_hm'
-    if config.do_bias_correction:
-        name += '_bc'
-    if config.do_normalization:
-        method = config.normalization_method
-        name += '_std' if method == 'standardize' else '_scale' if method == 'rescale' else ''
-    if config.limit_to_n_samples is not None:
-        name += f'_l{config.limit_to_n_samples}'
-    if config.exclude_empty_slices:
-        name += '_xe'
-    name += file_ending
-    return name
 
 
 def parse_args():
@@ -415,7 +273,7 @@ def parse_args():
                         '--modalities',
                         nargs='+',
                         default=['t1', 'seg'],
-                        choices=VALID_MODALITIES,
+                        choices=VALID_BRATS_MODALITIES,
                         help='List of modalities to process.')
 
     parser.add_argument('-t',
@@ -490,7 +348,7 @@ def parse_args():
 
 
 def main(args: argparse.Namespace) -> None:
-    config: PreprocessConfig = preprocess_config_factory(args)
+    config: BratsConfig = preprocess_config_factory(args, dataset_type='brats')
     pprint(config.__dict__)
     if config.do_pre_processing:
         run_preprocessing(config)

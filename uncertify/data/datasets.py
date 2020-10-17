@@ -32,9 +32,6 @@ class HDF5Dataset(Dataset):
         return self.dataset_shape[0]
 
 
-# TODO: Combine shared functionality - dict transformation horribly inefficient.
-
-
 class Brats2017HDF5Dataset(HDF5Dataset):
     def __getitem__(self, idx) -> dict:
         h5py_file = h5py.File(self._hdf5_file_path, 'r')
@@ -75,7 +72,7 @@ class CamCanHDF5Dataset(HDF5Dataset):
 
 
 class MnistDatasetWrapper(Dataset):
-    """Wrapper around MNIST to make it behave like CamCan and Brats, i.e. batch['scan'], instaed of batch[0]."""
+    """Wrapper around MNIST to make it behave like CamCan and Brats, i.e. batch['Scan'], instaed of batch[0]."""
     def __init__(self, mnist_dataset: Dataset) -> None:
         self._mnist_dataset = mnist_dataset
 
@@ -85,3 +82,6 @@ class MnistDatasetWrapper(Dataset):
     def __getitem__(self, idx) -> dict:
         return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
 
+
+if __name__ == '__main__':
+    cam = CamCanHDF5Dataset(Path())

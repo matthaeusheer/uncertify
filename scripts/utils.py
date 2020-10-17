@@ -1,7 +1,8 @@
 import argparse
-
+from pathlib import Path
 
 class ArgumentParserWithDefaults(argparse.ArgumentParser):
+    """Shows default arguments when doing --help."""
     def add_argument(self, *args, help=None, default=None, **kwargs):
         if help is not None:
             kwargs['help'] = help
