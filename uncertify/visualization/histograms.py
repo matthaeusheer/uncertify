@@ -50,7 +50,7 @@ def plot_multi_histogram(arrays: List[np.ndarray],
             if show_data_ticks:
                 ax.plot(array, np.full_like(array, -0.01), '|', c=colors[idx], markeredgewidth=1)
     if labels is not None:
-        ax.legend()
+        ax.legend(loc='upper left')
     return fig, ax
 
 

@@ -22,20 +22,41 @@ LOG = logging.getLogger(__name__)
 
 
 def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwargs) -> None:
+    """Plot batches of a BraTS dataloader.
+
+    Keyword Args:
+        nrow: kwarg to change number of rows
+        uppercase_keys: if True, changes 'scan' to 'Scan' to support legacy hdf5 datasets
+    """
     LOG.info('Plotting BraTS2017 Dataset [scan & segmentation]')
     for sample in islice(brats_dataloader, plot_n_batches):
         nrow_kwarg = {'nrow': kwargs.get('nrow')} if 'nrow' in kwargs.keys() else dict()
+        scan = 'Scan' if kwargs.get('uppercase_keys', False) else 'scan'
+        seg = 'Seg' if kwargs.get('uppercase_keys', False) else 'seg'
+        mask = 'Mask' if kwargs.get('uppercase_keys', False) else 'mask'
         grid = make_grid(
-            torch.cat((sample['scan'].type(torch.FloatTensor), sample['seg'].type(torch.FloatTensor), sample['mask'].type(torch.FloatTensor)), dim=2),
+            torch.cat((sample[scan].type(torch.FloatTensor),
+                       sample[seg].type(torch.FloatTensor),
+                       sample[mask].type(torch.FloatTensor)), dim=2),
             padding=0, **nrow_kwarg)
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
+        plt.show()
 
 
 def plot_camcan_batches(camcan_dataloader: DataLoader, plot_n_batches: int, **kwargs) -> None:
+    """Plot batches of a CamCAN dataloader.
+
+    Keyword Args:
+        nrow: kwarg to change number of rows
+        uppercase_keys: if True, changes 'scan' to 'Scan' to support legacy hdf5 datasets
+    """
     LOG.info('Plotting CamCAN Dataset [scan only]')
+    nrow_kwarg = {'nrow': kwargs.get('nrow')} if 'nrow' in kwargs.keys() else dict()
     for sample in islice(camcan_dataloader, plot_n_batches):
-        grid = make_grid(sample['scan'].type(torch.FloatTensor), padding=0)
+        scan = 'Scan' if kwargs.get('uppercase_keys', False) else 'scan'
+        grid = make_grid(sample[scan].type(torch.FloatTensor), padding=0, **nrow_kwarg)
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
+        plt.show()
 
 
 def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int = 4000, cmap: str = 'Greys_r',
@@ -73,6 +94,52 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
                 print(f'{dataset_name:15}: min/max: {description.minmax[0]:.2f}/{description.minmax[1]:.2f}, '
                       f'mean: {description.mean:.2f}, variance: {description.variance:.2f}')
         plt.tight_layout()
+        plt.show()
+
+
+def plot_patient_histograms(dataloader: DataLoader, n_batches: int, accumulate_batches: bool = False,
+                            normalize_hist: bool = True, bins: int = 40, uppercase_keys: bool = False):
+    """Plot the batch-wise intensity histograms.
+
+    Arguments
+        dataloader: a hdf5 dataloader
+        plot_n_batches: how many batches to take into account
+        accumulate_batches: if True, stack all values from all batches and report one histogram
+                            if False, do one histogram for every batch in the figure
+        normalize_hist: histogram noramlization
+        bins: number of bins in histograms
+        uppercase_keys: if True supports legacy upper case keys
+    """
+    accumulated_values = []
+    for idx, batch in enumerate(dataloader):
+        mask = batch['mask' if not uppercase_keys else 'Mask'].cpu().detach().numpy()
+        scan = batch['scan' if not uppercase_keys else 'Scan'].cpu().detach().numpy()
+        masked_pixels = scan[mask != 0].flatten()
+        accumulated_values.append(masked_pixels)
+        if idx + 1 == n_batches:
+            break
+
+    if accumulate_batches:
+        values = np.concatenate(accumulated_values)
+        plot_multi_histogram(
+            arrays=[values],
+            plot_density=False,  # KDE
+            title='Accumulated Intensities Histogram',
+            xlabel='Pixel Intensity',
+            hist_kwargs=dict(bins=bins),
+            figsize=(12, 8),
+        )
+        plt.show()
+    else:
+        plot_multi_histogram(
+            arrays=accumulated_values,
+            labels=[f'Batch {idx + 1}' for idx in range(len(accumulated_values))],
+            plot_density=False,  # KDE
+            title='Batch-wise intensity Histograms',
+            xlabel='Pixel Intensity',
+            hist_kwargs=dict(bins=bins),
+            figsize=(12, 8),
+        )
         plt.show()
 
 

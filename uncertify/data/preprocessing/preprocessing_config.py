@@ -3,17 +3,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Union
 
-
-REFERENCE_DIR_PATH      = Path('/scratch_net/samuylov/maheer/datasets/reference/')
-HIST_REF_T1_PATH        = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased.nii.gz'
-HIST_REF_T1_MASK_PATH   = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased_mask.nii.gz'
-HIST_REF_T2_PATH        = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_unbiased.nii.gz'
-HIST_REF_T2_MASK_PATH   = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_mask_unbiased.nii.gz'
-VALID_BRATS_MODALITIES  = ['t1', 't2', 'flair', 't1ce', 'seg']
-VALID_CAMCAN_MODALITIES = ['t1', 't2']
-HDF5_OUT_FOLDER         = Path('/scratch/maheer/datasets/processed/')
+VALID_BRATS_MODALITIES = ['t1', 't2', 'flair', 't1ce', 'seg']
 BACKGROUND_VALUE = -3.5
-N4_EXECUTABLE_PATH      = Path('/usr/bmicnas01/data-biwi-01/bmicdatasets/Sharing/N4')
+N4_EXECUTABLE_PATH = Path('/usr/bmicnas01/data-biwi-01/bmicdatasets/Sharing/N4')
 
 
 @dataclass
@@ -59,7 +51,8 @@ class CamCanConfig(PreprocessConfig):
     image_modality: str
 
 
-def preprocess_config_factory(args: argparse.Namespace, dataset_type: str) -> Union[BratsConfig, CamCanConfig]:
+def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
+                              dataset_type: str) -> Union[BratsConfig, CamCanConfig]:
     """Factory method to create a pre-processing config based on the parsed command line arguments."""
     if dataset_type == 'brats':
         config = BratsConfig(
@@ -73,11 +66,7 @@ def preprocess_config_factory(args: argparse.Namespace, dataset_type: str) -> Un
             do_bias_correction=not args.no_bias_correction,
             force_bias_correction=args.force_bias_correction,
             do_histogram_matching=not args.no_histogram_matching,
-            ref_paths={'t1': {'img': HIST_REF_T1_PATH,
-                              'mask': HIST_REF_T1_MASK_PATH},
-                       't2': {'img': HIST_REF_T2_PATH,
-                              'mask': HIST_REF_T2_MASK_PATH}
-                       },
+            ref_paths=ref_paths,
             do_normalization=not args.no_normalization,
             normalization_method=args.normalization_method,
             shuffle_pre_processing=args.shuffle_pre_processing,
@@ -96,11 +85,7 @@ def preprocess_config_factory(args: argparse.Namespace, dataset_type: str) -> Un
             limit_to_n_samples=args.limit_n_samples,
             exclude_empty_slices=args.exclude_empty_slices,
             do_histogram_matching=not args.no_histogram_matching,
-            ref_paths={'t1': {'img': HIST_REF_T1_PATH,
-                              'mask': HIST_REF_T1_MASK_PATH},
-                       't2': {'img': HIST_REF_T2_PATH,
-                              'mask': HIST_REF_T2_MASK_PATH}
-                       },
+            ref_paths=ref_paths,
             do_normalization=not args.no_normalization,
             normalization_method=args.normalization_method,
             background_value=BACKGROUND_VALUE,

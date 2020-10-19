@@ -19,11 +19,17 @@ from uncertify.data.preprocessing.processing_funcs import create_masks
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.utils.python_helpers import bool_to_str
-from uncertify.data.preprocessing.preprocessing_config import VALID_BRATS_MODALITIES, HDF5_OUT_FOLDER, N4_EXECUTABLE_PATH
+from uncertify.data.preprocessing.preprocessing_config import VALID_BRATS_MODALITIES, HDF5_OUT_FOLDER, \
+    N4_EXECUTABLE_PATH
 
 from typing import Tuple, List
 
-DEFAULT_DATASET_NAME    = 'BraTS17'
+DEFAULT_DATASET_NAME = 'BraTS17'
+REFERENCE_DIR_PATH = Path('/scratch_net/samuylov/maheer/datasets/reference/')
+HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased.nii.gz'
+HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased_mask.nii.gz'
+HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_unbiased.nii.gz'
+HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_mask_unbiased.nii.gz'
 DEFAULT_BRATS_ROOT_PATH = Path('/scratch/maheer/datasets/raw/BraTS2017/training')
 
 
@@ -100,7 +106,8 @@ def process_modality(modality: str, sample_dir_path: Path, config: BratsConfig) 
                                     config.do_bias_correction, config.print_debug)
 
 
-def run_bias_correction(dir_path: Path, in_file_name: str, out_file_name: str, modality: str, config: BratsConfig) -> None:
+def run_bias_correction(dir_path: Path, in_file_name: str, out_file_name: str, modality: str,
+                        config: BratsConfig) -> None:
     """Depending on setting regarding forcing the bias correction, run it for some modality."""
     if not (dir_path / out_file_name).exists():
         run_bias_correction_single_file(dir_path, in_file_name, out_file_name, modality, config.print_debug)
@@ -348,7 +355,12 @@ def parse_args():
 
 
 def main(args: argparse.Namespace) -> None:
-    config: BratsConfig = preprocess_config_factory(args, dataset_type='brats')
+    ref_paths = {'t1': {'img': HIST_REF_T1_PATH,
+                        'mask': HIST_REF_T1_MASK_PATH},
+                 't2': {'img': HIST_REF_T2_PATH,
+                        'mask': HIST_REF_T2_MASK_PATH}
+                 }
+    config: BratsConfig = preprocess_config_factory(args, ref_paths, dataset_type='brats')
     pprint(config.__dict__)
     if config.do_pre_processing:
         run_preprocessing(config)

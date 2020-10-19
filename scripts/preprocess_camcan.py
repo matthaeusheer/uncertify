@@ -17,20 +17,19 @@ from uncertify.data.preprocessing.processing_funcs import transform_images_camca
 from uncertify.data.preprocessing.processing_funcs import create_masks
 from uncertify.data.preprocessing.processing_funcs import normalize_images
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
-from uncertify.utils.python_helpers import bool_to_str
+from uncertify.common import DATA_DIR_PATH
 
 from typing import Generator, Tuple
 
-
-DEFAULT_CamCAN_ROOT_PATH    = Path('/scratch/maheer/datasets/raw/CamCAN')
-REFERENCE_DIR_PATH          = Path('/scratch_net/samuylov/maheer/datasets/reference/')
-HIST_REF_T1_PATH            = REFERENCE_DIR_PATH / 'sub-CC723395_T1w_unbiased.nii.gz'
-HIST_REF_T1_MASK_PATH       = REFERENCE_DIR_PATH / 'sub-CC723395_T1w_brain_mask.nii.gz'
-HIST_REF_T2_PATH            = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
-HIST_REF_T2_MASK_PATH       = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
-HDF5_OUT_FOLDER             = Path('/scratch/maheer/datasets/processed/')
-BACKGROUND_VALUE            = -3.5
-VALID_MODALITIES            = ['t1', 't2']
+DEFAULT_CamCAN_ROOT_PATH = DATA_DIR_PATH / 'raw' / 'CamCAN'
+REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference' / 'CamCAN'
+HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_unbiased.nii.gz'
+HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz'
+HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
+HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
+HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
+BACKGROUND_VALUE = -3.5
+VALID_MODALITIES = ['t1', 't2']
 
 
 def process_patients(config: CamCanConfig) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
@@ -50,12 +49,21 @@ def process_patients(config: CamCanConfig) -> Generator[Tuple[np.ndarray, np.nda
     for img_path, mask_path in tqdm(list(generator), desc='Pre-processing CamCAN', total=n_total):
         images = nib.load(img_path).get_fdata()
         masks = nib.load(img_path).get_fdata()
-        transformed_mask = create_masks(transform_images_camcan(images))  # needs to happen before messing with pixel values
+        transformed_mask = create_masks(
+            transform_images_camcan(images))  # needs to happen before messing with pixel values
 
         # Histogram matching against reference
         if config.do_histogram_matching:
-            ref_img = nib.load(config.ref_paths[config.image_modality]['img']).get_fdata()
-            ref_mask = nib.load(config.ref_paths[config.image_modality]['mask']).get_fdata()
+            try:
+                ref_img = nib.load(config.ref_paths[config.image_modality]['img']).get_fdata()
+            except FileNotFoundError:
+                print(f'Did not find the reference slices to match histograms against.')
+                raise
+            try:
+                ref_mask = nib.load(config.ref_paths[config.image_modality]['mask']).get_fdata()
+            except FileNotFoundError:
+                print(f'Did not find the reference slices masks to match histograms against.')
+                raise
             images = run_histogram_matching(images, masks, ref_img, ref_mask, config.print_debug)
 
         # Image transformation
@@ -98,7 +106,7 @@ def main_create_hdf5_dataset(config: CamCanConfig) -> None:
             h5py_file['mask'][-len(masks):] = masks.astype('float')
 
     # Store processing metadata
-    #for key, value in config.__dict__.items():
+    # for key, value in config.__dict__.items():
     #    h5py_file.attrs[key] = np.string_(value if type(value) is not bool else bool_to_str(value))
     h5py_file_path = h5py_file.filename
     h5py_file.close()
@@ -118,7 +126,6 @@ def parse_args():
 
     parser.add_argument('-m',
                         '--modality',
-                        nargs='+',
                         default='t2',
                         choices=VALID_MODALITIES,
                         help='Image modality to process.')
@@ -167,7 +174,11 @@ def parse_args():
 
 if __name__ == '__main__':
     os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
-    run_config = preprocess_config_factory(parse_args(), dataset_type='camcan')
+    ref_paths = {'t1': {'img': HIST_REF_T1_PATH,
+                        'mask': HIST_REF_T1_MASK_PATH},
+                 't2': {'img': HIST_REF_T2_PATH,
+                        'mask': HIST_REF_T2_MASK_PATH}
+                 }
+    run_config = preprocess_config_factory(parse_args(), ref_paths, dataset_type='camcan')
     pprint(run_config.__dict__)
     main_create_hdf5_dataset(run_config)
-
