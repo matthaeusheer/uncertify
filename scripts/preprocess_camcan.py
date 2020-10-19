@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 import nibabel as nib
 import h5py
+from sklearn.model_selection import train_test_split
 
 import add_uncertify_to_path
 from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, preprocess_config_factory
@@ -19,7 +20,7 @@ from uncertify.data.preprocessing.processing_funcs import normalize_images
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.common import DATA_DIR_PATH
 
-from typing import Generator, Tuple
+from typing import Generator, Tuple, List
 
 DEFAULT_CamCAN_ROOT_PATH = DATA_DIR_PATH / 'raw' / 'CamCAN'
 REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference' / 'CamCAN'
@@ -30,23 +31,31 @@ HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz
 HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
 BACKGROUND_VALUE = -3.5
 VALID_MODALITIES = ['t1', 't2']
+DEFAULT_VAL_SET_FRACTION = 0.1
+TRAIN_VAL_SPLIT_RANDOM_SEED = 42
 
 
-def process_patients(config: CamCanConfig) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
-    """Main function to create an HDF5 dataset from a full CamCAN dataset."""
+def get_nii_file_paths(config: CamCanConfig) -> List[Tuple[Path, Path]]:
+    """Get a list of (img_path, mask_path) tuples. One tuple per patient."""
     img_paths = sorted(camcan.get_nii_sample_file_paths(config.dataset_root_path, config.image_modality))
     mask_paths = sorted(camcan.get_nii_mask_file_paths(config.dataset_root_path, config.image_modality))
     assert len(img_paths) == len(mask_paths), f'Not same amount of images and mask files. Abort.'
 
-    # Check if limiting of patient is enabled
+    # Check if limiting of patient is disabled / enabled
     if config.limit_to_n_samples is None:
         generator = zip(img_paths, mask_paths)
-        n_total = len(img_paths)
     else:
         generator = zip(img_paths[:config.limit_to_n_samples], mask_paths[:config.limit_to_n_samples])
-        n_total = config.limit_to_n_samples
+    img_mask_tuple_list = list(generator)
+    return img_mask_tuple_list
 
-    for img_path, mask_path in tqdm(list(generator), desc='Pre-processing CamCAN', total=n_total):
+
+def process_patients(img_mask_tuple_list, config: CamCanConfig,
+                     train_or_val: str) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+    """Main function to create an HDF5 dataset from a full CamCAN dataset."""
+    n_patients = len(img_mask_tuple_list)
+    for img_path, mask_path in tqdm(list(img_mask_tuple_list),
+                                    desc=f'Pre-processing CamCAN {train_or_val}', total=n_patients):
         images = nib.load(img_path).get_fdata()
         masks = nib.load(img_path).get_fdata()
         transformed_mask = create_masks(
@@ -80,37 +89,47 @@ def process_patients(config: CamCanConfig) -> Generator[Tuple[np.ndarray, np.nda
 
 def main_create_hdf5_dataset(config: CamCanConfig) -> None:
     """For a given config, run the whole pipeline to produce an HDF5 file output."""
+    img_mask_tuple_list = get_nii_file_paths(config)
+    train_img_mask_tuple_list, val_img_mask_tuple_list = train_test_split(img_mask_tuple_list,
+                                                                          test_size=DEFAULT_VAL_SET_FRACTION,
+                                                                          random_state=TRAIN_VAL_SPLIT_RANDOM_SEED)
+    set_paths_dict = {
+        'train': train_img_mask_tuple_list,
+        'val': val_img_mask_tuple_list
+    }
     config.hdf5_out_folder_path.mkdir(parents=True, exist_ok=True)
-    h5py_file = h5py.File(str(config.hdf5_out_folder_path / create_hdf5_file_name(config)), mode='w')
 
-    create_new_dataset = True
-    for images, masks in process_patients(config):
-        # Possibly exclude empty slices
-        keep_indices = get_indices_to_keep(masks, config.exclude_empty_slices)
-        images = images[keep_indices]
-        masks = masks[keep_indices]
-        n_slices, height, width = images.shape
-        slices = images.reshape(n_slices, width * height)
-        masks = masks.reshape(n_slices, width * height)
+    for train_or_val, img_mask_tuple_list in set_paths_dict.items():
+        h5py_file = h5py.File(str(config.hdf5_out_folder_path / create_hdf5_file_name(config, train_or_val)), mode='w')
 
-        if create_new_dataset:
-            h5py_file.create_dataset('scan', data=slices, maxshape=(None, width * height))
-            h5py_file.create_dataset('mask', data=masks.astype('float'), maxshape=(None, width * height))
-            create_new_dataset = False
-        else:
-            # Scan
-            h5py_file['scan'].resize((h5py_file['scan'].shape[0] + len(slices)), axis=0)
-            h5py_file['scan'][-len(slices):] = slices
-            # Mask
-            h5py_file['mask'].resize((h5py_file['mask'].shape[0] + len(masks)), axis=0)
-            h5py_file['mask'][-len(masks):] = masks.astype('float')
+        create_new_dataset = True
+        for images, masks in process_patients(img_mask_tuple_list, config, train_or_val):
+            # Possibly exclude empty slices
+            keep_indices = get_indices_to_keep(masks, config.exclude_empty_slices)
+            images = images[keep_indices]
+            masks = masks[keep_indices]
+            n_slices, height, width = images.shape
+            slices = images.reshape(n_slices, width * height)
+            masks = masks.reshape(n_slices, width * height)
 
-    # Store processing metadata
-    # for key, value in config.__dict__.items():
-    #    h5py_file.attrs[key] = np.string_(value if type(value) is not bool else bool_to_str(value))
-    h5py_file_path = h5py_file.filename
-    h5py_file.close()
-    print(f'Done creating h5py dataset. Output: {h5py_file_path}')
+            if create_new_dataset:
+                h5py_file.create_dataset('scan', data=slices, maxshape=(None, width * height))
+                h5py_file.create_dataset('mask', data=masks.astype('float'), maxshape=(None, width * height))
+                create_new_dataset = False
+            else:
+                # Scan
+                h5py_file['scan'].resize((h5py_file['scan'].shape[0] + len(slices)), axis=0)
+                h5py_file['scan'][-len(slices):] = slices
+                # Mask
+                h5py_file['mask'].resize((h5py_file['mask'].shape[0] + len(masks)), axis=0)
+                h5py_file['mask'][-len(masks):] = masks.astype('float')
+
+        # Store processing metadata
+        # for key, value in config.__dict__.items():
+        #    h5py_file.attrs[key] = np.string_(value if type(value) is not bool else bool_to_str(value))
+        h5py_file_path = h5py_file.filename
+        h5py_file.close()
+        print(f'Done creating h5py dataset. Output: {h5py_file_path}')
 
 
 def parse_args():
@@ -168,6 +187,11 @@ def parse_args():
                         '--print-debug',
                         action='store_true',
                         help='If set, enables debug print information on stdout.')
+
+    parser.add_argument('--val-fraction',
+                        type=float,
+                        default=DEFAULT_VAL_SET_FRACTION,
+                        help='Fraction of data to be used for validation (other be used for training).')
     args = parser.parse_args()
     return args
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import h5py
+import torch
 import torchvision
 from cached_property import cached_property
 from torch.utils.data import Dataset
@@ -96,5 +97,9 @@ class MnistDatasetWrapper(Dataset):
         return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
 
 
-if __name__ == '__main__':
-    cam = CamCanHDF5Dataset(Path())
+def train_val_split(dataset: HDF5Dataset, train_fraction: float) -> Tuple[HDF5Dataset, HDF5Dataset]:
+    """Performs a random split with a given fraction for training (and thus validation) set."""
+    train_set_length = int(len(dataset) * train_fraction)
+    val_set_length = len(dataset) - train_set_length
+    train_set, val_set = torch.utils.data.random_split(dataset, [train_set_length, val_set_length])
+    return train_set, val_set

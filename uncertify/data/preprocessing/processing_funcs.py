@@ -54,7 +54,6 @@ def normalize_images(images: np.ndarray, masks: np.ndarray, normalization_method
         images[masks == 0] = background_value
     return images
 
-
 def run_histogram_matching(input_images: np.ndarray, input_masks: np.ndarray,
                            reference_images: np.ndarray, reference_masks: np.ndarray,
                            print_debug: bool = False) -> np.ndarray:
@@ -91,14 +90,20 @@ def get_indices_to_keep(mask_file_path: Union[Path, np.ndarray], exclude_empty_s
         return non_empty_slice_indices
 
 
-def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig], file_ending: str = '.hdf5') -> str:
+def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig], train_or_val: str = 'train',
+                          file_ending: str = '.hdf5') -> str:
     """Given the arguments passed into this script, create a meaningful filename for the created HDF5 file.."""
-    name = config.dataset_name
-    name += f'_{config.image_modality}'
+    assert train_or_val in {'train', 'val'}, f'Given train_or_val {train_or_val} not allowed.'
     is_brats = isinstance(config, BratsConfig)
+    is_camcan = isinstance(config, CamCanConfig)
+
+    name = config.dataset_name
+    if is_camcan:
+        name += f'_{train_or_val}'
+    name += f'_{config.image_modality}'
+    if config.do_histogram_matching:
+        name += '_hm'
     if is_brats:
-        if config.do_histogram_matching:
-            name += '_hm'
         if config.do_bias_correction:
             name += '_bc'
     if config.do_normalization:
