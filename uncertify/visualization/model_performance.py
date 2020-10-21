@@ -11,7 +11,8 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
                                                dice_scores: Iterable[float] = None,
                                                iou_scores: Iterable[float] = None,
                                                train_set_threshold: float = None,
-                                               **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+                                               **kwargs) -> plt.Figure:
+    """Plot dice and iou scores vs various residual pixel thresholds."""
     if dice_scores is None and iou_scores is None:
         raise ValueError(f'Need to provide either dice scores or iou scores or both.')
     fig, ax = setup_plt_figure(**kwargs)
@@ -30,7 +31,7 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
     ax.set_xlabel('Pixel threshold for anomaly detection', fontweight='bold')
     ax.set_ylabel('Segmentation score', fontweight='bold')
     ax.legend(frameon=False)
-    return fig, ax
+    return fig
 
 
 def plot_confusion_matrix(cf,

@@ -29,10 +29,10 @@ HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz
 HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
 HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
 HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
-BACKGROUND_VALUE = -3.5
 VALID_MODALITIES = ['t1', 't2']
 DEFAULT_VAL_SET_FRACTION = 0.1
 TRAIN_VAL_SPLIT_RANDOM_SEED = 42
+DEFAULT_BACKGROUND_VALUE = 0.0
 
 
 def get_nii_file_paths(config: CamCanConfig) -> List[Tuple[Path, Path]]:
@@ -192,6 +192,10 @@ def parse_args():
                         type=float,
                         default=DEFAULT_VAL_SET_FRACTION,
                         help='Fraction of data to be used for validation (other be used for training).')
+    parser.add_argument('--background-value',
+                        type=float,
+                        default=DEFAULT_BACKGROUND_VALUE,
+                        help='Value to be set outside the brain mask.')
     args = parser.parse_args()
     return args
 

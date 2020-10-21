@@ -103,14 +103,20 @@ def parse_args() -> argparse.Namespace:
         default=0.5,
         help='Fraction of steps during one cycle which is constant.'
     )
+    parser.add_argument(
+        '--out-dir-path',
+        type=Path,
+        default=DATA_DIR_PATH,
+        help='Output directory, logs (tensorboard, models, ...) will be stored here in a lightning_logs folder.'
+    )
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace) -> None:
     LOG.info(f'Argparse args: {args.__dict__}')
-    logger = TensorBoardLogger(str(DATA_DIR_PATH / 'lightning_logs'), name=Path(__file__).stem)
+    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=Path(__file__).stem)
     trainer_kwargs = {'logger': logger,
-                      'default_root_dir': str(DATA_DIR_PATH / 'lightning_logs'),
+                      'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
                       'distributed_backend': 'ddp',

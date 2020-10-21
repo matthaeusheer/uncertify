@@ -19,18 +19,19 @@ from uncertify.data.preprocessing.processing_funcs import create_masks
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.utils.python_helpers import bool_to_str
-from uncertify.data.preprocessing.preprocessing_config import VALID_BRATS_MODALITIES, HDF5_OUT_FOLDER, \
-    N4_EXECUTABLE_PATH
+from uncertify.data.preprocessing.preprocessing_config import VALID_BRATS_MODALITIES, N4_EXECUTABLE_PATH
+from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, List
 
-DEFAULT_DATASET_NAME = 'BraTS17'
-REFERENCE_DIR_PATH = Path('/scratch_net/samuylov/maheer/datasets/reference/')
-HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased.nii.gz'
-HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t1_unbiased_mask.nii.gz'
-HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_unbiased.nii.gz'
-HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'Brats17_TCIA_607_1_t2_mask_unbiased.nii.gz'
+DEFAULT_DATASET_NAME = 'brats17'
 DEFAULT_BRATS_ROOT_PATH = Path('/scratch/maheer/datasets/raw/BraTS2017/training')
+REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference'
+HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_unbiased.nii.gz'
+HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz'
+HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
+HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
+HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
 
 
 def run_preprocessing(config: BratsConfig) -> None:
@@ -43,6 +44,7 @@ def run_preprocessing(config: BratsConfig) -> None:
     """
     # TODO: Potentially all sub-folders?
     sample_dir_paths = glob.glob(str(config.dataset_root_path / '*/*'))
+    assert len(sample_dir_paths) != 0, 'Did not find any matching files. Check your data folder again.'
     sample_dir_paths = [Path(path) for path in sample_dir_paths if 'Brats17_2013' not in os.path.split(path)[-1]]
     if config.shuffle_pre_processing:
         np.random.shuffle(sample_dir_paths)

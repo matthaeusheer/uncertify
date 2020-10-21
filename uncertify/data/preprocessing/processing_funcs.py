@@ -54,6 +54,7 @@ def normalize_images(images: np.ndarray, masks: np.ndarray, normalization_method
         images[masks == 0] = background_value
     return images
 
+
 def run_histogram_matching(input_images: np.ndarray, input_masks: np.ndarray,
                            reference_images: np.ndarray, reference_masks: np.ndarray,
                            print_debug: bool = False) -> np.ndarray:
@@ -109,6 +110,7 @@ def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig], train_or_val
     if config.do_normalization:
         method = config.normalization_method
         name += '_std' if method == 'standardize' else '_scale' if method == 'rescale' else ''
+        name += f'_bv{abs(config.background_value)}'
     if config.limit_to_n_samples is not None:
         name += f'_l{config.limit_to_n_samples}'
     if config.exclude_empty_slices:

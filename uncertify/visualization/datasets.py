@@ -98,7 +98,7 @@ def plot_samples(h5py_file: h5py.File, n_samples: int = 3, dataset_length: int =
 
 
 def plot_patient_histograms(dataloader: DataLoader, n_batches: int, accumulate_batches: bool = False,
-                            normalize_hist: bool = True, bins: int = 40, uppercase_keys: bool = False):
+                            bins: int = 40, uppercase_keys: bool = False):
     """Plot the batch-wise intensity histograms.
 
     Arguments
@@ -106,7 +106,6 @@ def plot_patient_histograms(dataloader: DataLoader, n_batches: int, accumulate_b
         plot_n_batches: how many batches to take into account
         accumulate_batches: if True, stack all values from all batches and report one histogram
                             if False, do one histogram for every batch in the figure
-        normalize_hist: histogram noramlization
         bins: number of bins in histograms
         uppercase_keys: if True supports legacy upper case keys
     """
@@ -145,6 +144,8 @@ def plot_patient_histograms(dataloader: DataLoader, n_batches: int, accumulate_b
 
 def plot_abnormal_pixel_distribution(data_loader: DataLoader, **hist_kwargs) -> Tuple[plt.Figure, plt.Axes]:
     """For a dataset with given ground truth, plot the distribution of fraction of abnormal pixels in an image.
+
+    This is done sample-wise, i.e.
 
     Note: Only pixels within the brain mask are considered and only samples with abnormal pixels are considered.
     """

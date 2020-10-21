@@ -105,7 +105,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
         # Sample batches from from validation steps and visualize
         np.random.seed(0)  # Make sure we always use the same samples for visualization
-        out_samples = np.random.choice(outputs, min(len(outputs), 4), replace=False)
+        out_samples = np.random.choice(outputs, min(len(outputs), 2), replace=False)
         for idx, out_sample in enumerate(out_samples):
             in_batch, rec_batch = out_sample['input_batch'], out_sample['reconstructed_batch']
             input_img_grid = torchvision.utils.make_grid(in_batch, normalize=True)
@@ -120,7 +120,7 @@ class VariationalAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_histogram(name, param.data, global_step=self._train_step_counter)
 
         # Sample from latent space and check reconstructions
-        n_latent_samples = 64
+        n_latent_samples = 32
         with torch.no_grad():
             latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM,))).cuda()
             latent_sample_reconstructions = self._decoder(latent_samples)
@@ -129,6 +129,7 @@ class VariationalAutoEncoder(pl.LightningModule):
                                                                              normalize=True)
             self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
                                              latent_sample_reconstructions_grid, global_step=self._train_step_counter)
+        loss_terms.update({'avg_val_mean_total_loss': avg_val_total_losses.mean()})
         return loss_terms
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
