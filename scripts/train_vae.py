@@ -26,17 +26,29 @@ def parse_args() -> argparse.Namespace:
     """Use argparse to parse command line arguments and pass it on to the main function."""
     parser = ArgumentParserWithDefaults()
     parser.add_argument(
+        '-w',
+        '--num-workers',
+        type=int,
+        default=0,
+        help='How many workers to use for data loading.'
+    )
+    parser.add_argument(
         '-d',
         '--dataset',
         choices=['mnist', 'camcan'],
         default='camcan',
         help='Which dataset to use for training.')
     parser.add_argument(
-        '-w',
-        '--num-workers',
-        type=int,
-        default=0,
-        help='How many workers to use for data loading.'
+        '--train-set-path',
+        type=Path,
+        default=None,
+        help='Path to HDF5 file holding training data.'
+    )
+    parser.add_argument(
+        '--val-set-path',
+        type=Path,
+        default=None,
+        help='Path to HDF5 file holding validation data.'
     )
     parser.add_argument(
         '-b',
@@ -140,6 +152,8 @@ def main(args: argparse.Namespace) -> None:
 
     train_dataloader, val_dataloader = dataloader_factory(dataset_type,
                                                           batch_size=args.batch_size,
+                                                          train_set_path=args.train_set_path,
+                                                          val_set_path=args.val_set_path,
                                                           transform=transform,
                                                           num_workers=args.num_workers)
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,

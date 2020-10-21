@@ -49,6 +49,7 @@ class BratsConfig(PreprocessConfig):
 @dataclass
 class CamCanConfig(PreprocessConfig):
     image_modality: str
+    val_fraction: float
 
 
 def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
@@ -91,6 +92,7 @@ def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
             background_value=BACKGROUND_VALUE,
             hdf5_out_folder_path=args.hdf5_out_dir_path,
             n4_executable_path=N4_EXECUTABLE_PATH,
+            val_fraction=args.val_fraction,
             print_debug=args.print_debug
         )
         return config
