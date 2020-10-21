@@ -7,6 +7,7 @@ from cached_property import cached_property
 from torch.utils.data import Dataset
 
 from uncertify.data.dict_transforms import DictSampleTransform
+from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple
 
@@ -86,7 +87,7 @@ class CamCanHDF5Dataset(HDF5Dataset):
 
 
 class MnistDatasetWrapper(Dataset):
-    """Wrapper around MNIST to make it behave like CamCan and Brats, i.e. batch['Scan'], instaed of batch[0]."""
+    """Wrapper around MNIST to make it behave like CamCan and Brats, i.e. batch['scan'], instead of batch[0]."""
     def __init__(self, mnist_dataset: Dataset) -> None:
         self._mnist_dataset = mnist_dataset
 
@@ -97,9 +98,27 @@ class MnistDatasetWrapper(Dataset):
         return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
 
 
+class GaussianNoiseDataset(Dataset):
+    def __init__(self) -> None:
+        """A toy dataset which is not really a dataset but simply generates images with noise on the fly."""
+        self._dataset_length = 10000
+        self._img_shape = (200, 200)
+
+    def __len__(self) -> int:
+        return self._dataset_length
+
+    def __getitem__(self, idx) -> dict:
+        return {'scan': self._generate_sample()}
+
+    def _generate_sample(self) -> Tensor:
+        return torch.randn(self._img_shape)
+
+
 def train_val_split(dataset: HDF5Dataset, train_fraction: float) -> Tuple[HDF5Dataset, HDF5Dataset]:
     """Performs a random split with a given fraction for training (and thus validation) set."""
     train_set_length = int(len(dataset) * train_fraction)
     val_set_length = len(dataset) - train_set_length
     train_set, val_set = torch.utils.data.random_split(dataset, [train_set_length, val_set_length])
     return train_set, val_set
+
+
