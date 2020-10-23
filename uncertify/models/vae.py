@@ -2,11 +2,11 @@
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
 import dataclasses
+from pathlib import Path
 
 import numpy as np
 import torch
 from torch import nn
-import torch.nn.functional as F
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
@@ -16,6 +16,7 @@ from uncertify.models.gradient import Gradient
 from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing
 from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
     CyclicBetaConfig, SigmoidBetaConfig
+from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict, Callable
@@ -175,3 +176,11 @@ class VariationalAutoEncoder(pl.LightningModule):
             return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
         else:
             raise RuntimeError(f'Beta config not supported.')
+
+
+def load_vae_baur_model(checkpoint_path: Path) -> nn.Module:
+    assert checkpoint_path.exists(), f'Model checkpoint does not exist!'
+    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model

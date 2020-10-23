@@ -27,8 +27,11 @@ from typing import Tuple, List
 DEFAULT_DATASET_NAME = 'brats17'
 DEFAULT_BRATS_ROOT_PATH = Path('/scratch/maheer/datasets/raw/BraTS2017/training')
 REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference'
-HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_unbiased.nii.gz'
-HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz'
+# HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_unbiased.nii.gz'
+# HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz'
+
+HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
+HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
 HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
 HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
 HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
@@ -251,7 +254,8 @@ def create_nii_file_name(sample_dir_name: str, modality: str, is_mask: bool, is_
                 f'{f"_{modality}" if not (modality == "seg" and is_mask) else ""}' \
                 f'{"_unbiased" if (is_unbiased and modality != "seg") else ""}' \
                 f'{"_mask" if is_mask else ""}' \
-                f'{"_processed" if is_processed else ""}.nii.gz'
+                f'{"_processed" if is_processed else ""}' \
+                f'.nii.gz'
     return file_name
 
 

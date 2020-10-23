@@ -1,4 +1,3 @@
-import math
 import logging
 import itertools
 
@@ -12,9 +11,8 @@ from uncertify.utils.custom_types import Tensor
 from uncertify.evaluation.utils import threshold_batch_to_one_zero
 from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.tensor_ops import print_scipy_stats_description
-from uncertify.data.utils import get_n_masked_pixels
 
-from typing import Generator, Dict, Tuple, Callable
+from typing import Generator, Dict, Callable
 
 LOG = logging.getLogger(__name__)
 
@@ -43,7 +41,7 @@ def yield_reconstructed_batches(data_loader: DataLoader,
     and yield a tuple dicts of scan, reconstruction and (if present in dataloader) segmentation batches."""
     data_generator = itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader
     n_batches = max_batches if max_batches is not None else len(data_loader)
-    for batch in tqdm(data_generator, desc=f'Inferring batches {progress_bar_suffix}', total=n_batches):
+    for batch in tqdm(data_generator, desc=f'Inferring batches {progress_bar_suffix}', initial=1, total=n_batches):
         scan_batch = get_batch_fn(batch)
         # Run actual inference for batch
         inference_result = trained_model(scan_batch)

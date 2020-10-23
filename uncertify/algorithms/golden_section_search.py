@@ -1,12 +1,15 @@
 import math
 
-from typing import Tuple, Callable
+import numpy as np
+
+from typing import Tuple, Callable, Union
 
 INV_PHI = (math.sqrt(5) - 1) / 2
 INV_PHI_SQUARED = (3 - math.sqrt(5)) / 2
 
 
-def golden_section_search(func: Callable, low: float, up: float, tolerance: float = 1e-5) -> Tuple[float, float]:
+def golden_section_search(func: Callable, low: float, up: float, tolerance: float = 1e-5,
+                          return_mean: bool = True) -> Union[Tuple[float, float], float]:
     """Golden Section Search Algorithm - Taken directly from Wikipedia.
 
     Given a function f with a single local minimum in
@@ -15,7 +18,8 @@ def golden_section_search(func: Callable, low: float, up: float, tolerance: floa
 
     This implementation
     reuses function evaluations, saving 1/2 of the evaluations per
-    iteration, and returns a bounding interval.
+    iteration, and returns a bounding interval if return_mean=False, else it takes the mean of the
+    upper and lower bound of the interval.
 
     Example:
         f = lambda x: (x-2)**2
@@ -29,7 +33,10 @@ def golden_section_search(func: Callable, low: float, up: float, tolerance: floa
     (low, up) = (min(low, up), max(low, up))
     h = up - low
     if h <= tolerance:
-        return low, up
+        if return_mean:
+            return float(np.mean([low, up]))
+        else:
+            return low, up
 
     # Required steps to achieve tolerance
     n = int(math.ceil(math.log(tolerance / h) / math.log(INV_PHI)))
@@ -56,6 +63,12 @@ def golden_section_search(func: Callable, low: float, up: float, tolerance: floa
             yd = func(d)
 
     if yc < yd:
-        return low, d
+        if return_mean:
+            return float(np.mean([low, d]))
+        else:
+            return low, d
     else:
-        return c, up
+        if return_mean:
+            return float(np.mean([c, up]))
+        else:
+            return c, up

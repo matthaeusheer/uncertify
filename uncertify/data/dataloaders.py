@@ -33,8 +33,8 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
                        train_set_path: Path = None, val_set_path: Path = None,
                        transform: Any = None, num_workers: int = 0,
                        shuffle_train: bool = True, shuffle_val: bool = False,
-                       uppercase_keys: bool = False) -> Tuple[Optional[DataLoader],
-                                                              Optional[DataLoader]]:
+                       uppercase_keys: bool = False, **kwargs) -> Tuple[Optional[DataLoader],
+                                                                        Optional[DataLoader]]:
     """Returns a train and val dataloader for given dataset type based on the configuration given through arguments.
 
     Returns
@@ -44,8 +44,8 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
     assert isinstance(dataset_type, DatasetType), f'Need to provide valid DatasetType (enum).'
 
     if dataset_type is DatasetType.MNIST:
-        train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform)
-        val_dataloader = mnist_val_dataloader(batch_size, num_workers, transform)
+        train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform, **kwargs)
+        val_dataloader = mnist_val_dataloader(batch_size, num_workers, transform, **kwargs)
 
     elif dataset_type is DatasetType.BRATS17:
         assert val_set_path is not None, f'For BraTS need to provide a validation dataset path!'
@@ -99,7 +99,8 @@ def camcan_data_loader(hdf5_train_path: Path = None, hdf5_val_path: Path = None,
     return train_dataloader, val_dataloader
 
 
-def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0, transform: Any = None) -> DataLoader:
+def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                           transform: Any = None, **kwargs) -> DataLoader:
     if transform is None:
         transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
@@ -107,13 +108,13 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                                            train=True,
                                            download=True,
                                            transform=transform)
-    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set),
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set, label=kwargs.get('mnist_label', None)),
                       batch_size=batch_size,
                       shuffle=shuffle,
                       num_workers=num_workers)
 
 
-def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any = None) -> DataLoader:
+def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any = None, **kwargs) -> DataLoader:
     if transform is None:
         transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
@@ -121,7 +122,7 @@ def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any =
                                          train=False,
                                          download=True,
                                          transform=transform)
-    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set),
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set, label=kwargs.get('mnist_label', None)),
                       batch_size=batch_size,
                       shuffle=False,
                       num_workers=num_workers)

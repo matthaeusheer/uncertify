@@ -35,7 +35,9 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
     samples (i.e. from the training data) should be used to make the assumption hold.
     """
     result_generator = yield_reconstructed_batches(data_loader, model,
-                                                   residual_threshold=threshold, print_statistics=False)
+                                                   residual_threshold=threshold,
+                                                   max_batches=n_batches_per_thresh,
+                                                   print_statistics=False)
     per_batch_fpr = []
     if n_batches_per_thresh is not None:
         result_generator = itertools.islice(result_generator, n_batches_per_thresh)
@@ -64,5 +66,5 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
 def calculate_fpr_minus_accepted(threshold: float, data_loader: DataLoader, model: torch.nn.Module, accepted_fpr: float,
                                  use_ground_truth: bool = False, n_batches_per_thresh: int = 50) -> float:
     """Returns the absolute difference of the mean FPR and an accepted FPR. Can be used to search threshold value."""
-    return abs(calculate_mean_false_positive_rate(threshold, data_loader, model, use_ground_truth,
-                                                  n_batches_per_thresh) - accepted_fpr)
+    mean_fpr = calculate_mean_false_positive_rate(threshold, data_loader, model, use_ground_truth, n_batches_per_thresh)
+    return abs(mean_fpr - accepted_fpr)

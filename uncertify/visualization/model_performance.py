@@ -4,12 +4,14 @@ import seaborn as sns
 
 from uncertify.visualization.plotting import setup_plt_figure
 
-from typing import Iterable, Tuple
+from typing import Iterable
 
 
 def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
                                                dice_scores: Iterable[float] = None,
+                                               dice_stds: Iterable[float] = None,
                                                iou_scores: Iterable[float] = None,
+                                               iou_stds: Iterable[float] = None,
                                                train_set_threshold: float = None,
                                                **kwargs) -> plt.Figure:
     """Plot dice and iou scores vs various residual pixel thresholds."""
@@ -20,11 +22,11 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
     if dice_scores is not None:
         if max(dice_scores) > max_score:
             max_score = max(dice_scores)
-        ax.plot(thresholds, dice_scores, linewidth=3, c='cyan', label='Dice score')
+        ax.errorbar(thresholds, dice_scores, yerr=dice_stds, linewidth=2, c='cyan', label='Dice score')
     if iou_scores is not None:
         if max(iou_scores) > max_score:
             max_score = max(iou_scores)
-        ax.plot(thresholds, iou_scores, linewidth=3, c='orange', label='IoU score')
+        ax.errorbar(thresholds, iou_scores, yerr=iou_stds, linewidth=2, c='orange', label='IoU score')
     if train_set_threshold is not None:
         ax.plot([train_set_threshold, train_set_threshold], [0, max_score], linewidth=1, linestyle='dashed', c='Grey',
                 label=f'Training set threshold (GSS)')
