@@ -29,6 +29,7 @@ install = "*"
 scikit-plot = "*"
 nibabel = "*"
 jupyterlab = "*"
+umap-learn = "*"
 
 [requires]
 python_version = "3.8"

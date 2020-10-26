@@ -1,16 +1,111 @@
 from pathlib import Path
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 from tqdm import tqdm
+import umap
 
 from uncertify.deploy import infer_latent_space_samples
 from uncertify.visualization.reconstruction import plot_vae_output
-from uncertify.visualization.plotting import save_fig
+from uncertify.visualization.plotting import save_fig, setup_plt_figure
 from uncertify.evaluation import latent_space_analysis
+from uncertify.utils.custom_types import Tensor
 
-from typing import Tuple
+from typing import Tuple, Iterable, List, Generator, Dict
+
+
+def plot_umap_latent_embedding(output_generators: Iterable[Generator[Dict[str, Tensor], None, None]],
+                               names: Iterable[str], **kwargs) -> plt.Figure:
+    """For different data loaders, plot the latent space UMAP embedding.
+
+    Arguments:
+        output_generators: an iterable of generators (use yield_reconstructed_batches) to create histograms for
+        names: names for the respective output generators
+
+    """
+    # Prepare dictionaries holding sample-wise codes for different data loaders
+    latent_codes = defaultdict(list)
+    kl_divs = defaultdict(list)
+    rec_errors = defaultdict(list)
+
+    # Perform inference and fill the data dicts for later plotting
+    for generator, generator_name in zip(output_generators, names):
+        for batch in generator:
+            has_ground_truth = 'seg' in batch.keys()
+            if has_ground_truth:
+                for segmentation, mask, kl_div, rec_err, code in zip(batch['seg'], batch['mask'],
+                                                                     batch['kl_div'], batch['rec_err'],
+                                                                     batch['latent_code']):  # sample-wise zip
+                    n_abnormal_pixels = float(torch.sum(segmentation > 0))
+                    n_normal_pixels = float(torch.sum(mask))
+                    if n_normal_pixels == 0:
+                        continue
+                    abnormal_fraction = n_abnormal_pixels / n_normal_pixels
+                    is_abnormal = n_abnormal_pixels > 20  # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
+                    suffix = 'abnormal' if is_abnormal else 'normal'
+
+                    kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
+                    rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
+                    latent_codes[f' '.join([generator_name, suffix])].append(code.detach().numpy())
+            else:
+                for kl_div, rec_err, code in zip(batch['kl_div'], batch['rec_err'],
+                                                 batch['latent_code']):  # sample-wise zip
+                    kl_divs[generator_name].append(float(kl_div))
+                    rec_errors[generator_name].append(float(rec_err))
+                    latent_codes[generator_name].append(code.detach().numpy())
+    kld_arrays = []
+    kld_labels = []
+    rec_arrays = []
+    rec_labels = []
+    code_arrays = []
+    code_labels = []
+
+    for name, arr in kl_divs.items():
+        kld_arrays.append(np.array(arr))
+        kld_labels.append(name)
+    for name, arr in rec_errors.items():
+        rec_arrays.append(np.array(rec_errors[name]))
+        rec_labels.append(name)
+    for name, arr in latent_codes.items():
+        code_arrays.append(np.array(arr))
+        code_labels.append(name)
+
+    sizes = np.concatenate(kld_arrays)
+
+    # Perform UMAP embedding
+    reducer = umap.UMAP()
+    embedding = reducer.fit_transform(np.vstack(code_arrays))
+
+    fig, ax = setup_plt_figure(title='Latent Space UMAP Embeddings', **kwargs)
+
+    unique_names = {name: idx for idx, name in enumerate(set(code_labels))}
+    sample_lengths = {name: len(codes) for name, codes in zip(code_labels, code_arrays)}
+    color_indices = []
+    for name, length in sample_lengths.items():
+        color_indices.extend(length * [unique_names[name]])
+
+    pointer = 0
+    for dataset_name, dataset_length in sample_lengths.items():
+        x_values = embedding[pointer:pointer+dataset_length, 0]
+        y_values = embedding[pointer:pointer+dataset_length, 1]
+
+        ax.scatter(
+            x_values,
+            y_values,
+            c=[sns.color_palette()[unique_names[dataset_name]]] * dataset_length,
+            s=sizes[pointer:pointer+dataset_length] * 1000,
+            label=dataset_name,
+            alpha=0.7,
+            edgecolors='none',
+        )
+        pointer += dataset_length
+
+    ax.legend()
+    ax.set_aspect('equal', 'datalim')
+    return fig
 
 
 def plot_latent_reconstructions_one_dim_changing(trained_model: torch.nn.Module, change_dim_idx: int, n_samples: int,

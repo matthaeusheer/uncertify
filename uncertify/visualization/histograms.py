@@ -50,23 +50,31 @@ def plot_multi_histogram(arrays: List[np.ndarray],
             if show_data_ticks:
                 ax.plot(array, np.full_like(array, -0.01), '|', c=colors[idx], markeredgewidth=1)
     if labels is not None:
-        ax.legend(loc='upper left')
+        ax.legend(loc='best')
     return fig, ax
 
 
 def plot_loss_histograms(output_generators: Iterable[Generator[Dict[str, Tensor], None, None]],
                          names: Iterable[str], **kwargs) -> List[Tuple[plt.Figure, plt.Axes]]:
-    """For different data loaders, plot the loss value histograms."""
+    """For different data loaders, plot the sample-wise loss value histograms.
+
+    Arguments:
+        output_generators: an iterable of generators (use yield_reconstructed_batches) to create histograms for
+        names: names for the respective output generators
+        kwargs:
+            kde_bandwidth: a list of bandwidths to use for each type of plot
+    """
     # Prepare dictionaries holding sample-wise losses for different data loaders
     kl_divs = defaultdict(list)
     rec_errors = defaultdict(list)
+
     # Perform inference and fill the data dicts for later plotting
     for generator, generator_name in zip(output_generators, names):
         for batch in generator:
             has_ground_truth = 'seg' in batch.keys()
             if has_ground_truth:
                 for segmentation, mask, kl_div, rec_err in zip(batch['seg'], batch['mask'],
-                                                               batch['kl_div'], batch['rec_err']):
+                                                               batch['kl_div'], batch['rec_err']):  # sample-wise zip
                     n_abnormal_pixels = float(torch.sum(segmentation > 0))
                     n_normal_pixels = float(torch.sum(mask))
                     if n_normal_pixels == 0:
@@ -77,7 +85,7 @@ def plot_loss_histograms(output_generators: Iterable[Generator[Dict[str, Tensor]
                     kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
                     rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
             else:
-                for kl_div, rec_err in zip(batch['kl_div'], batch['rec_err']):
+                for kl_div, rec_err in zip(batch['kl_div'], batch['rec_err']):  # sample-wise zip
                     kl_divs[generator_name].append(float(kl_div))
                     rec_errors[generator_name].append(float(rec_err))
     kld_arrays = []
@@ -97,3 +105,4 @@ def plot_loss_histograms(output_generators: Iterable[Generator[Dict[str, Tensor]
     fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)
     return [(fig1, ax2), (fig2, ax2)]
+
