@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from uncertify.data.np_transforms import NumpyReshapeTransform, Numpy2PILTransform
 from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset, MnistDatasetWrapper
-from uncertify.data.datasets import train_val_split
+from uncertify.data.datasets import GaussianNoiseDataset
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Any, Optional
@@ -19,6 +19,7 @@ class DatasetType(Enum):
     MNIST = 1
     BRATS17 = 2
     CAMCAN = 3
+    GAUSS_NOISE = 4
 
 
 BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
@@ -45,7 +46,7 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
 
     if dataset_type is DatasetType.MNIST:
         train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform, **kwargs)
-        val_dataloader = mnist_val_dataloader(batch_size, num_workers, transform, **kwargs)
+        val_dataloader = mnist_val_dataloader(batch_size, shuffle_val, num_workers, transform, **kwargs)
 
     elif dataset_type is DatasetType.BRATS17:
         assert val_set_path is not None, f'For BraTS need to provide a validation dataset path!'
@@ -57,6 +58,12 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
         train_dataloader, val_dataloader = camcan_data_loader(train_set_path, val_set_path, batch_size,
                                                               shuffle_train, shuffle_val,
                                                               num_workers, transform, uppercase_keys)
+
+    elif dataset_type is DatasetType.GAUSS_NOISE:
+        # TODO: Shape etc. is still hardcoded here to 128x128
+        noise_set = GaussianNoiseDataset()
+        train_dataloader = None
+        val_dataloader = DataLoader(noise_set, batch_size=batch_size)
     else:
         raise ValueError(f'DatasetType {dataset_type} not supported by this factory method.')
 
@@ -114,7 +121,8 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                       num_workers=num_workers)
 
 
-def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any = None, **kwargs) -> DataLoader:
+def mnist_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                         transform: Any = None, **kwargs) -> DataLoader:
     if transform is None:
         transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
@@ -124,5 +132,5 @@ def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any =
                                          transform=transform)
     return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set, label=kwargs.get('mnist_label', None)),
                       batch_size=batch_size,
-                      shuffle=False,
+                      shuffle=shuffle,
                       num_workers=num_workers)

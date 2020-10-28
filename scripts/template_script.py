@@ -2,6 +2,8 @@
 This script servers as a template for all subsequent scripts.
 """
 import argparse
+from pathlib import Path
+from pprint import pprint
 
 import add_uncertify_to_path  # makes sure we can use the uncertify-ai library
 import uncertify
@@ -22,6 +24,7 @@ def parse_args() -> argparse.Namespace:
 def main(args: argparse.Namespace) -> None:
     """"Main entry point for our program."""
     # Magic happens here...
+    pprint(args.__dict__)
     print(f'Successfully loaded {uncertify}')
 
 

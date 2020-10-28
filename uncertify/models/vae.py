@@ -3,9 +3,11 @@ A Variational AutoEncoder model implemented using pytorch lightning.
 """
 import dataclasses
 from pathlib import Path
+from itertools import islice
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from torch import nn
 import torchvision
 import pytorch_lightning as pl
@@ -17,9 +19,11 @@ from uncertify.models.beta_annealing import monotonic_annealing, cyclical_anneal
 from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
     CyclicBetaConfig, SigmoidBetaConfig
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
+from uncertify.utils.sampling import random_uniform_ring
+from uncertify.deploy import residual_l1_max
 from uncertify.utils.custom_types import Tensor
 
-from typing import Tuple, List, Dict, Callable
+from typing import Tuple, List, Dict
 
 LATENT_SPACE_DIM = 128
 
@@ -27,12 +31,15 @@ LATENT_SPACE_DIM = 128
 class VariationalAutoEncoder(pl.LightningModule):
     def __init__(self, encoder: nn.Module, decoder: nn.Module,
                  beta_config: BetaConfig = ConstantBetaConfig(beta=1.0),
-                 n_m_factor: float = 1.0) -> None:
+                 n_m_factor: float = 1.0, ood_dataloaders: List[Dict[str, DataLoader]] = None,
+                 loss_type: str = 'l1') -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
-        Args:
+        Arguments:
             encoder: the encoder module (can be pytorch or lightning module)
             decoder: the decoder module (can be pytorch or lightning module)
             beta_config: configuration on how to handle the beta parameter (constant, monotonic or cyclic)
+            ood_dataloaders: a list of dataloaders which will be used to check reconstructions of during training
+            loss_type: can be either "l1" or "l2" to use either Laplace or Gaussian distributions over reconstruction
         """
         super().__init__()
         self._encoder = encoder
@@ -42,6 +49,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._beta_config = beta_config
         self.save_hyperparameters('decoder', 'encoder')
         self._n_m_factor = n_m_factor
+        self._ood_dataloaders = ood_dataloaders
+        self._loss_type = loss_type
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
@@ -56,7 +65,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
-        """Applying reparameterization trick."""
+        """Applying re-parameterization trick."""
         std = torch.exp(0.5 * log_var)  # log_var = log(std^2) = 2*log(std) -> std = exp(0.5*log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
@@ -104,39 +113,34 @@ class VariationalAutoEncoder(pl.LightningModule):
                       'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
         self.logger.experiment.add_scalars('avg_val_mean_loss_terms', loss_terms, global_step=self._train_step_counter)
 
-        # Sample batches from from validation steps and visualize
-        np.random.seed(0)  # Make sure we always use the same samples for visualization
-        out_samples = np.random.choice(outputs, min(len(outputs), 2), replace=False)
-        for idx, out_sample in enumerate(out_samples):
-            in_batch, rec_batch = out_sample['input_batch'], out_sample['reconstructed_batch']
-            input_img_grid = torchvision.utils.make_grid(in_batch, normalize=True)
-            output_img_grid = torchvision.utils.make_grid(rec_batch, normalize=True)
-            residuals = torch.abs(rec_batch - in_batch)
-            residual_img_grid = torchvision.utils.make_grid(residuals, normalize=True)
-            grad_residuals = self._gradient_net.forward(residuals)
-            grad_diff_grid = torchvision.utils.make_grid(grad_residuals, normalize=True)
-            grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
-            self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self._train_step_counter)
+        # Sample from the same few batches over training and check reconstructions
+        self._log_random_eval_batch_reconstruction(outputs)
+
+        # Sample from latent space and log reconstructions, from unit Gaussian and from within ranges
+        for min_max_range in [None, (1, 2), (3, 4), (6, 7), (50, 100), (100, 150), (200, 240)]:
+            self._log_latent_samples_reconstructions(n_samples=16, min_max_radius=min_max_range)
+
+        # Sample from OOD datasets if provided
+        if self._ood_dataloaders is not None:
+            for ood_set in self._ood_dataloaders:
+                for ood_set_name, ood_dataloader in ood_set.items():
+                    self._log_ood_reconstructions(ood_set_name, ood_dataloader)
+
         for name, param in self.named_parameters():
             self.logger.experiment.add_histogram(name, param.data, global_step=self._train_step_counter)
 
-        # Sample from latent space and check reconstructions
-        n_latent_samples = 32
-        with torch.no_grad():
-            latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM,))).cuda()
-            latent_sample_reconstructions = self._decoder(latent_samples)
-            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions,
-                                                                             padding=0,
-                                                                             normalize=True)
-            self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
-                                             latent_sample_reconstructions_grid, global_step=self._train_step_counter)
         loss_terms.update({'avg_val_mean_total_loss': avg_val_total_losses.mean()})
         return loss_terms
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
         # p(x|z)
-        rec_dist = dist.Normal(reconstruction, 1.0)
+        if self._loss_type == 'l2':
+            rec_dist = dist.Normal(reconstruction, 1.0)  # TODO: The std parameter could be varied (tuned)!
+        elif self._loss_type == 'l1':
+            rec_dist = dist.Laplace(reconstruction, 1.0)
+        else:
+            raise ValueError(f'Loss type "{self._loss_type}" not supported.')
         log_p_x_z = rec_dist.log_prob(observation)
         log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each sample
 
@@ -151,7 +155,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         kl_div = torch.mean(kl_div, dim=1)  # KL divergences as we would get them per sample in the batch
         kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
-        # Take the mean over all batches
+        # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise
         mean_kl_div = torch.mean(kl_div)
         mean_log_p_x_z = torch.mean(log_p_x_z)
 
@@ -176,6 +180,65 @@ class VariationalAutoEncoder(pl.LightningModule):
             return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
         else:
             raise RuntimeError(f'Beta config not supported.')
+
+    def _log_latent_samples_reconstructions(self, n_samples: int, min_max_radius: Tuple[float, float] = None) -> None:
+        """Sample from latent space and check reconstructions."""
+        with torch.no_grad():
+            if min_max_radius is None:  # sample from standard normal gaussian
+                latent_samples = torch.normal(mean=0, std=torch.ones((n_samples, LATENT_SPACE_DIM,))).cuda()
+                log_title = 'ID_mu0_std1_latent_samples'
+            else:  # sample from a certain "hyper-circle" around the normal mode
+                inner_radius, outer_radius = min_max_radius
+                latent_samples = torch.tensor(random_uniform_ring(np.zeros(128), outer_radius,
+                                                                  inner_radius, n_samples)).float().cuda()
+                log_title = f'ID_range_{inner_radius}_to_{outer_radius}_latent_samples'
+            reconstructions = self._decoder(latent_samples)
+            reconstructions_grid = torchvision.utils.make_grid(reconstructions, padding=0, normalize=True)
+            self.logger.experiment.add_image(log_title, reconstructions_grid, global_step=self._train_step_counter)
+
+    def _log_ood_reconstructions(self, set_name: str, dataloader: DataLoader) -> None:
+        """Log reconstruction and residuals of batches from OOD data."""
+        n_batches = 2
+        for batch in islice(dataloader, n_batches):
+            in_batch = batch['scan'].cuda()
+            rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(in_batch)
+            residuals, grad_residuals = self._get_residuals_and_gradient(in_batch, rec_batch)
+            grid = self._create_in_rec_res_grad_grid(in_batch, rec_batch, residuals, grad_residuals)
+            self.logger.experiment.add_image(f'OOD_{set_name}', grid, global_step=self._train_step_counter)
+
+    def _log_random_eval_batch_reconstruction(self, outputs: List[Dict],
+                                              n_batches: int = 2, max_samples: int = 32) -> None:
+        """Sample batches from from validation steps and visualize input, output, reconstruction and gradients."""
+        np.random.seed(0)  # Make sure we always use the same samples for visualization
+        out_samples = np.random.choice(outputs, min(len(outputs), n_batches), replace=False)
+        for idx, out_sample in enumerate(out_samples):
+            in_batch, rec_batch = out_sample['input_batch'], out_sample['reconstructed_batch']
+            n_slices, _, height, width = in_batch.shape
+            if max_samples < n_slices:  # Limit number of samples shown if batch-size is large to reduce storage
+                np.random.seed(0)
+                slice_indices = sorted(np.random.choice(list(range(n_slices)), max_samples, replace=False))
+                in_batch = in_batch[slice_indices, :, :, :]
+                rec_batch = rec_batch[slice_indices, :, :, :]
+            residuals, grad_residuals = self._get_residuals_and_gradient(in_batch, rec_batch)
+            grid = self._create_in_rec_res_grad_grid(in_batch, rec_batch, residuals, grad_residuals)
+            self.logger.experiment.add_image(f'ID_random_batch_{idx + 1}', grid, global_step=self._train_step_counter)
+
+    def _get_residuals_and_gradient(self, input_batch: Tensor, rec_batch: Tensor) -> Tuple[Tensor, Tensor]:
+        """For a given input batch and a reconstruction batch, create residual and residual gradient batches."""
+        residuals = residual_l1_max(rec_batch, input_batch)
+        grad_residuals = self._gradient_net.forward(residuals)
+        return residuals, grad_residuals
+
+    @staticmethod
+    def _create_in_rec_res_grad_grid(in_batch: Tensor, rec_batch: Tensor,
+                                     res_batch: Tensor, res_grad_batch: Tensor):
+        """Create a torchvision grid vom input, reconstruction, residual and residual gradient batches."""
+        input_img_grid = torchvision.utils.make_grid(in_batch, padding=0, normalize=True)
+        output_img_grid = torchvision.utils.make_grid(rec_batch, padding=0, normalize=True)
+        residual_img_grid = torchvision.utils.make_grid(res_batch, padding=0, normalize=True)
+        grad_diff_grid = torchvision.utils.make_grid(res_grad_batch, padding=0, normalize=True)
+        grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
+        return grid
 
 
 def load_vae_baur_model(checkpoint_path: Path) -> nn.Module:

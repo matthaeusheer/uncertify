@@ -13,6 +13,7 @@ from uncertify.visualization.reconstruction import plot_vae_output
 from uncertify.visualization.plotting import save_fig, setup_plt_figure
 from uncertify.evaluation import latent_space_analysis
 from uncertify.utils.custom_types import Tensor
+from uncertify.utils.sampling import random_uniform_ring
 
 from typing import Tuple, Iterable, List, Generator, Dict
 
@@ -89,14 +90,14 @@ def plot_umap_latent_embedding(output_generators: Iterable[Generator[Dict[str, T
 
     pointer = 0
     for dataset_name, dataset_length in sample_lengths.items():
-        x_values = embedding[pointer:pointer+dataset_length, 0]
-        y_values = embedding[pointer:pointer+dataset_length, 1]
+        x_values = embedding[pointer:pointer + dataset_length, 0]
+        y_values = embedding[pointer:pointer + dataset_length, 1]
 
         ax.scatter(
             x_values,
             y_values,
             c=[sns.color_palette()[unique_names[dataset_name]]] * dataset_length,
-            s=sizes[pointer:pointer+dataset_length] * 1000,
+            s=sizes[pointer:pointer + dataset_length] * 1000,
             label=dataset_name,
             alpha=0.7,
             edgecolors='none',
@@ -165,3 +166,32 @@ def plot_random_latent_space_samples(model: torch.nn.Module, n_samples: int = 16
     if save_path is not None:
         save_fig(fig, save_path, **kwargs)
     return fig, ax
+
+
+def plot_latent_samples_from_ring(model: torch.nn.Module, n_samples: int = 16, latent_space_dims: int = 128,
+                                  outer_radius: float = 1.0, inner_radius: float = 0.0, **kwargs) -> plt.Figure:
+    """Plot reconstructions from random latent space samples which are sampled from a n-dimensional ring."""
+    latent_samples = random_uniform_ring(center=np.zeros(latent_space_dims), outer_radius=outer_radius,
+                                         inner_radius=inner_radius, n_samples=n_samples)
+    output = infer_latent_space_samples(model, torch.tensor(latent_samples).float())
+    fig, ax = plot_vae_output(output, figsize=(20, 20), one_channel=True, axis='off',
+                              add_colorbar=False, vmax=3,
+                              title=f'Inner / Outer radius: {inner_radius, outer_radius}', **kwargs)
+    return fig
+
+
+def plot_ring_samples() -> plt.Figure:
+    radii = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
+    center = (0, 0)
+    n_samples = 1600
+    fig, ax = setup_plt_figure(figsize=(6, 6))
+    for inner_radius, outer_radius in radii:
+        samples = random_uniform_ring(np.array(center), outer_radius, inner_radius, n_samples)
+        ax.scatter(samples[:, 0], samples[:, 1], s=0.5)
+        ax.add_artist(plt.Circle(center, outer_radius, fill=False, color='0.5'))
+        ax.add_artist(plt.Circle(center, inner_radius, fill=False, color='0.5'))
+        ax.set_xlim(-outer_radius - 0.5 + center[0], outer_radius + 0.5 + center[0])
+        ax.set_ylim(-outer_radius - 0.5 + center[1], outer_radius + 0.5 + center[1])
+        ax.set_aspect('equal')
+    ax.grid()
+    plt.show()
