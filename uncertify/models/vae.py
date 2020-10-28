@@ -20,7 +20,7 @@ from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, Mono
     CyclicBetaConfig, SigmoidBetaConfig
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.utils.sampling import random_uniform_ring
-from uncertify.deploy import residual_l1_max
+from uncertify.evaluation.utils import residual_l1_max
 from uncertify.utils.custom_types import Tensor
 
 from typing import Tuple, List, Dict

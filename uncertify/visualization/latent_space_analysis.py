@@ -8,17 +8,17 @@ import torch
 from tqdm import tqdm
 import umap
 
-from uncertify.deploy import infer_latent_space_samples
+from uncertify.evaluation.inference import infer_latent_space_samples
 from uncertify.visualization.reconstruction import plot_vae_output
 from uncertify.visualization.plotting import save_fig, setup_plt_figure
 from uncertify.evaluation import latent_space_analysis
-from uncertify.utils.custom_types import Tensor
+from uncertify.evaluation.inference import BatchInferenceResult
 from uncertify.utils.sampling import random_uniform_ring
 
-from typing import Tuple, Iterable, List, Generator, Dict
+from typing import Tuple, Iterable, Generator
 
 
-def plot_umap_latent_embedding(output_generators: Iterable[Generator[Dict[str, Tensor], None, None]],
+def plot_umap_latent_embedding(output_generators: Iterable[Generator[BatchInferenceResult, None, None]],
                                names: Iterable[str], **kwargs) -> plt.Figure:
     """For different data loaders, plot the latent space UMAP embedding.
 
@@ -35,11 +35,12 @@ def plot_umap_latent_embedding(output_generators: Iterable[Generator[Dict[str, T
     # Perform inference and fill the data dicts for later plotting
     for generator, generator_name in zip(output_generators, names):
         for batch in generator:
-            has_ground_truth = 'seg' in batch.keys()
+            has_ground_truth = batch.segmentation is not None
+
             if has_ground_truth:
-                for segmentation, mask, kl_div, rec_err, code in zip(batch['seg'], batch['mask'],
-                                                                     batch['kl_div'], batch['rec_err'],
-                                                                     batch['latent_code']):  # sample-wise zip
+                for segmentation, mask, kl_div, rec_err, code in zip(batch.segmentation, batch.mask,
+                                                                     batch.kl_div, batch.rec_err,
+                                                                     batch.latent_code):  # sample-wise zip
                     n_abnormal_pixels = float(torch.sum(segmentation > 0))
                     n_normal_pixels = float(torch.sum(mask))
                     if n_normal_pixels == 0:
@@ -52,8 +53,7 @@ def plot_umap_latent_embedding(output_generators: Iterable[Generator[Dict[str, T
                     rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
                     latent_codes[f' '.join([generator_name, suffix])].append(code.detach().numpy())
             else:
-                for kl_div, rec_err, code in zip(batch['kl_div'], batch['rec_err'],
-                                                 batch['latent_code']):  # sample-wise zip
+                for kl_div, rec_err, code in zip(batch.kl_div, batch.rec_err, batch.latent_code):  # sample-wise zip
                     kl_divs[generator_name].append(float(kl_div))
                     rec_errors[generator_name].append(float(rec_err))
                     latent_codes[generator_name].append(code.detach().numpy())

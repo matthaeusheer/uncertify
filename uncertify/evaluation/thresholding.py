@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from uncertify.data.dataloaders import DataLoader
-from uncertify.deploy import yield_reconstructed_batches
+from uncertify.evaluation.inference import yield_inference_batches
 from uncertify.metrics.classification import false_positive_rate
 
 from typing import Tuple, List, Iterable
@@ -34,20 +34,19 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
     Else, every "anomaly" pixel in the thresholded residual is considered an outlier. In this setting, only healthy
     samples (i.e. from the training data) should be used to make the assumption hold.
     """
-    result_generator = yield_reconstructed_batches(data_loader, model,
-                                                   residual_threshold=threshold,
-                                                   max_batches=n_batches_per_thresh,
-                                                   print_statistics=False)
+    result_generator = yield_inference_batches(data_loader, model,
+                                               residual_threshold=threshold,
+                                               max_batches=n_batches_per_thresh)
     per_batch_fpr = []
     if n_batches_per_thresh is not None:
         result_generator = itertools.islice(result_generator, n_batches_per_thresh)
     with torch.no_grad():
         for batch_idx, batch in enumerate(result_generator):
-            prediction = batch['thresh'][batch['mask']]
+            prediction = batch.residuals_thresholded[batch.mask]
             pred_np = prediction.numpy().astype(int)
             if use_ground_truth:
                 try:
-                    ground_truth = batch['seg'][batch['mask']]
+                    ground_truth = batch.segmentation[batch.mask]
                 except KeyError:
                     LOG.exception(f'When use_ground_truth=True, the data_loader must '
                                   f'provide batches under "seg" key. Exit.')

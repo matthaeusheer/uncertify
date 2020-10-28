@@ -11,12 +11,11 @@ from typing import Union
 @dataclass
 class PixelThresholdSearchConfig:
     # Accepted false positive rate when searching for threshold
-    accepted_fpr: 0.05
+    accepted_fpr: float = 0.05
     # Min, max, and number of values for fpr vs threshold calculations
     min_val = 0.0
-    max_val = 1.0
-    num_values = 15
-    num_batches = 100
+    max_val = 3.0
+    num_values = 5
     # Subsequent Golden Section Search parameters
     gss_lower_val = 0.0
     gss_upper_val = 1.0
@@ -25,14 +24,19 @@ class PixelThresholdSearchConfig:
 
 @dataclass
 class PerformanceEvaluationConfig:
-    use_n_batches: int = None
+    # Min, max, and number of values for segmentation performance vs threshold calculations
+    min_val = 0.0
+    max_val = 3.0
+    num_values = 5
+    do_iou = False
 
 
 @dataclass
 class EvaluationConfig:
     """A data class which holds configurations and hyper-parameters necessary for an evaluation pipeline run."""
-    thresh_search_config: PixelThresholdSearchConfig
-    performance_config: PerformanceEvaluationConfig
+    thresh_search_config: PixelThresholdSearchConfig() = PixelThresholdSearchConfig()
+    performance_config: PerformanceEvaluationConfig = PerformanceEvaluationConfig()
+    use_n_batches: int = None  # Handy for faster evaluation or debugging
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
 

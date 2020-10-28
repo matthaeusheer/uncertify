@@ -14,12 +14,12 @@ from uncertify.visualization.grid import imshow_grid
 from uncertify.utils.custom_types import Tensor
 from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.tensor_ops import print_scipy_stats_description
-from uncertify.deploy import yield_reconstructed_batches
+from uncertify.evaluation.inference import BatchInferenceResult
 
 from typing import Generator, Dict, Tuple
 
 
-def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str, Tensor], None, None],
+def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInferenceResult, None, None],
                                              plot_n_batches: int = 3, save_dir_path: Path = None, **kwargs) -> None:
     """Plot the scan and reconstruction batches. Horizontally aligned are the samples from one batch.
     Vertically aligned are input image, ground truth segmentation, reconstruction, residual image, residual with
@@ -34,12 +34,12 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[Dict[str
         save_dir_path.mkdir(exist_ok=True)
     with torch.no_grad():
         for batch_idx, batch in enumerate(itertools.islice(batch_generator, plot_n_batches)):
-            scan = normalize_to_0_1(batch['scan'])
-            reconstruction = normalize_to_0_1(batch['rec'])
-            residual = normalize_to_0_1(batch['res'])
-            thresholded = batch['thresh']
-            if 'seg' in batch.keys():
-                seg = normalize_to_0_1(batch['seg'])
+            scan = normalize_to_0_1(batch.scan)
+            reconstruction = normalize_to_0_1(batch.reconstruction)
+            residual = normalize_to_0_1(batch.residual)
+            thresholded = batch.residuals_thresholded
+            if batch.segmentation is not None:
+                seg = normalize_to_0_1(batch.segmentation)
                 stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)
             else:
                 stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)

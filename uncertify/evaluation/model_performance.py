@@ -3,10 +3,10 @@ import torch
 from sklearn import metrics as sklearn_metrics
 
 from uncertify.data.dataloaders import DataLoader
-from uncertify.deploy import yield_reconstructed_batches
+from uncertify.evaluation.inference import yield_inference_batches
 from uncertify.metrics.classification import dice, intersection_over_union
 
-from typing import Iterable, Tuple
+from typing import List, Tuple, Iterable
 
 VALID_SEGMENTATION_SCORE_TYPES = {'dice', 'iou'}
 
@@ -18,7 +18,7 @@ def mean_std_dice_score(data_loader: DataLoader, model: torch.nn.Module, residua
 
 
 def mean_std_dice_scores(data_loader: DataLoader, model: torch.nn.Module, residual_thresholds: Iterable[float],
-                         max_n_batches: int = None) -> Iterable[Tuple[float, float]]:
+                         max_n_batches: int = None) -> Tuple[List[float], List[float]]:
     """Calculate the mean and std of dice scores for batches for multiple residual thresholds."""
     return mean_std_segmentation_scores(data_loader, model, residual_thresholds, 'dice', max_n_batches)
 
@@ -30,7 +30,7 @@ def mean_std_iou_score(data_loader: DataLoader, model: torch.nn.Module, residual
 
 
 def mean_std_iou_scores(data_loader: DataLoader, model: torch.nn.Module, residual_thresholds: Iterable[float],
-                        max_n_batches: int = None) -> Iterable[Tuple[float, float]]:
+                        max_n_batches: int = None) -> Tuple[List[float], List[float]]:
     """Calculate the mean and std of iou scores for batches for multiple residual thresholds."""
     return mean_std_segmentation_scores(data_loader, model, residual_thresholds, 'iou', max_n_batches)
 
@@ -49,12 +49,11 @@ def mean_std_seg_score(data_loader: DataLoader, model: torch.nn.Module, residual
     """
     if score_type not in VALID_SEGMENTATION_SCORE_TYPES:
         raise ValueError(f'Provided score_type ({score_type}) invalid. Choose from: {VALID_SEGMENTATION_SCORE_TYPES}')
-    batch_generator = yield_reconstructed_batches(data_loader, model, max_n_batches, residual_threshold,
-                                                  print_statistics=False)
+    batch_generator = yield_inference_batches(data_loader, model, max_n_batches, residual_threshold)
     per_batch_scores = []
     for batch_idx, batch in enumerate(batch_generator):
-        prediction_batch = batch['thresh'][batch['mask']]
-        ground_truth_batch = batch['seg'][batch['mask']]
+        prediction_batch = batch.residuals_thresholded[batch.mask]
+        ground_truth_batch = batch.segmentation[batch.mask]
         with torch.no_grad():
             if score_type == 'dice':
                 score = dice(prediction_batch.numpy(), ground_truth_batch.numpy())
@@ -71,7 +70,7 @@ def mean_std_seg_score(data_loader: DataLoader, model: torch.nn.Module, residual
 
 def mean_std_segmentation_scores(data_loader: DataLoader, model: torch.nn.Module,
                                  residual_thresholds: Iterable[float], score_type: str = 'dice',
-                                 max_n_batches: int = None) -> Tuple[Iterable[float], Iterable[float]]:
+                                 max_n_batches: int = None) -> Tuple[List[float], List[float]]:
     """Similar to calculate_mean_segmentation_score but this time for multiple residual thresholds."""
     scores_means = []
     scores_stds = []
@@ -88,13 +87,12 @@ def calculate_confusion_matrix(data_loader: DataLoader, model: torch.nn.Module, 
 
     The layout of the confusion matrix follows the convention by scikit-learn, which is used to calculate sub matrices!
     """
-    batch_generator = yield_reconstructed_batches(data_loader, model, max_n_batches, residual_threshold,
-                                                  print_statistics=False)
+    batch_generator = yield_inference_batches(data_loader, model, max_n_batches, residual_threshold)
     confusion_matrix = np.zeros((2, 2))  # initialize zero confusion matrix
     for batch_idx, batch in enumerate(batch_generator):
         with torch.no_grad():
-            y_pred = batch['thresh'][batch['mask']].flatten().numpy()
-            y_true = batch['seg'][batch['mask']].flatten().numpy()
+            y_pred = batch.residuals_thresholded[batch.mask].flatten().numpy()
+            y_true = batch.segmentation[batch.mask].flatten().numpy()
             sub_confusion_matrix = sklearn_metrics.confusion_matrix(y_true, y_pred, normalize=normalize)
             confusion_matrix += sub_confusion_matrix
     return confusion_matrix
