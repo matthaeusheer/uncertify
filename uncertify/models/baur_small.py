@@ -75,9 +75,9 @@ def print_feature_map_sizes_baur_small() -> None:
     height_width = (128, 128)
     print(f'Initial size -> {height_width}')
     conv_module_kwargs = [
-        {'kernel_size': 4, 'stride': 3, 'padding': 2},
-        {'kernel_size': 4, 'stride': 3, 'padding': 2},
-        {'kernel_size': 1, 'stride': 1}
+        {'kernel_size': 5, 'stride': 3, 'padding': 1},
+        {'kernel_size': 5, 'stride': 3, 'padding': 2},
+        {'kernel_size': 1, 'stride': 2, 'padding': 1}
     ]
     for idx, kwargs in enumerate(conv_module_kwargs):
         height_width = conv2d_output_shape(height_width, kwargs['kernel_size'],
