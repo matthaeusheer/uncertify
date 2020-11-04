@@ -21,7 +21,8 @@ class GenericConv2DBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int,
                  conv_module: nn.Module = nn.Conv2d, conv_further_kwargs: dict = None,
                  activation_module: Optional[nn.Module] = nn.LeakyReLU, activation_kwargs: dict = None,
-                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d, normalization_kwargs: dict = None) -> None:
+                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d, normalization_kwargs: dict = None,
+                 dropout_rate: float = None) -> None:
         """Generic convolution block for either standard or transpose convolution.
 
         Allows to have a sequential module block consisting of convolution, normalization and activation with
@@ -48,6 +49,9 @@ class GenericConv2DBlock(nn.Module):
         self.activation_module_ = None
         if activation_module is not None:
             self.activation_module_ = activation_module(**(activation_kwargs or {}))
+        self.dropout_module_ = None
+        if dropout_rate is not None:
+            self.dropout_module_ = nn.Dropout2d(dropout_rate)
 
     def forward(self, tensor: Tensor) -> Tensor:
         if self.conv_module_ is not None:
@@ -56,23 +60,36 @@ class GenericConv2DBlock(nn.Module):
             tensor = self.normalization_module_(tensor)
         if self.activation_module_ is not None:
             tensor = self.activation_module_(tensor)
+        if self.dropout_module_ is not None:
+            tensor = self.dropout_module_(tensor)
         return tensor
 
 
 class Conv2DBlock(GenericConv2DBlock):
-    def __init__(self, in_channels: int, out_channels: int, conv_further_kwargs: dict = None,
-                 activation_module: Optional[nn.Module] = nn.LeakyReLU, activation_kwargs: dict = None,
-                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d, normalization_kwargs: dict = None) -> None:
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 conv_further_kwargs: dict = None,
+                 activation_module: Optional[nn.Module] = nn.LeakyReLU,
+                 activation_kwargs: dict = None,
+                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d,
+                 normalization_kwargs: dict = None,
+                 dropout_rate: float = None) -> None:
         super().__init__(in_channels, out_channels, nn.Conv2d, conv_further_kwargs, activation_module,
-                         activation_kwargs, normalization_module, normalization_kwargs)
+                         activation_kwargs, normalization_module, normalization_kwargs, dropout_rate)
 
 
 class ConvTranspose2DBlock(GenericConv2DBlock):
-    def __init__(self, in_channels: int, out_channels: int, conv_further_kwargs: dict = None,
-                 activation_module: Optional[nn.Module] = nn.LeakyReLU, activation_kwargs: dict = None,
-                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d, normalization_kwargs: dict = None) -> None:
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int, conv_further_kwargs: dict = None,
+                 activation_module: Optional[nn.Module] = nn.LeakyReLU,
+                 activation_kwargs: dict = None,
+                 normalization_module: Optional[nn.Module] = nn.BatchNorm2d,
+                 normalization_kwargs: dict = None,
+                 dropout_rate: float = None) -> None:
         super().__init__(in_channels, out_channels, nn.ConvTranspose2d, conv_further_kwargs, activation_module,
-                         activation_kwargs, normalization_module, normalization_kwargs)
+                         activation_kwargs, normalization_module, normalization_kwargs, dropout_rate)
 
 
 class BaurEncoder(pl.LightningModule):
@@ -89,21 +106,27 @@ class BaurEncoder(pl.LightningModule):
 
     @staticmethod
     def define_conv_layers() -> nn.Sequential:
+        dropout_rate = 0.5
         conv1 = Conv2DBlock(in_channels=1,
                             out_channels=32,
-                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2})
+                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
+                            dropout_rate=0.5)
         conv2 = Conv2DBlock(in_channels=32,
                             out_channels=64,
-                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2})
+                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
+                            dropout_rate=dropout_rate)
         conv3 = Conv2DBlock(in_channels=64,
                             out_channels=128,
-                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2})
+                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
+                            dropout_rate=dropout_rate)
         conv4 = Conv2DBlock(in_channels=128,
                             out_channels=128,
-                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2})
+                            conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
+                            dropout_rate=dropout_rate)
         conv5 = Conv2DBlock(in_channels=128,
                             out_channels=16,
-                            conv_further_kwargs={'kernel_size': 1, 'stride': 1})
+                            conv_further_kwargs={'kernel_size': 1, 'stride': 1},
+                            dropout_rate=dropout_rate)
         return nn.Sequential(*[conv1, conv2, conv3, conv4, conv5])
 
     def forward(self, input_tensor: Tensor) -> Tensor:
@@ -126,30 +149,37 @@ class BaurDecoder(nn.Module):
 
     @staticmethod
     def define_conv_layers() -> nn.Sequential:
+        dropout_rate = 0.5
         conv1 = Conv2DBlock(in_channels=16,
                             out_channels=128,
-                            conv_further_kwargs={'kernel_size': 1, 'stride': 1})
+                            conv_further_kwargs={'kernel_size': 1, 'stride': 1},
+                            dropout_rate=dropout_rate)
         conv2 = ConvTranspose2DBlock(in_channels=128,
                                      out_channels=128,
                                      conv_further_kwargs={'kernel_size': 5, 'stride': 2,
-                                                          'padding': 2, 'output_padding': 1})
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
         conv3 = ConvTranspose2DBlock(in_channels=128,
                                      out_channels=64,
                                      conv_further_kwargs={'kernel_size': 5, 'stride': 2,
-                                                          'padding': 2, 'output_padding': 1})
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
         conv4 = ConvTranspose2DBlock(in_channels=64,
                                      out_channels=32,
                                      conv_further_kwargs={'kernel_size': 5, 'stride': 2,
-                                                          'padding': 2, 'output_padding': 1})
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
         conv5 = ConvTranspose2DBlock(in_channels=32,
                                      out_channels=32,
                                      conv_further_kwargs={'kernel_size': 5, 'stride': 2,
-                                                          'padding': 2, 'output_padding': 1})
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
         conv6 = Conv2DBlock(in_channels=32,
                             out_channels=1,
                             conv_further_kwargs={'kernel_size': 1, 'stride': 1},
                             normalization_module=None,
-                            activation_module=None)
+                            activation_module=None,
+                            dropout_rate=0.5)
         return nn.Sequential(*[conv1, conv2, conv3, conv4, conv5, conv6])
 
     def forward(self, latent_code: Tensor) -> Tensor:
@@ -194,6 +224,44 @@ def print_feature_map_sizes_baur() -> None:
         print(f'After transpose conv module {idx + 1} ({kwargs}) -> {height_width}')
 
 
+def print_feature_map_sizes_xiaoran() -> None:
+    """Print the feature map sizes of Xiaoran Encoder and Decoder."""
+    # Encoder
+    height_width = (128, 128)
+    print(f'Initial size -> {height_width}')
+    conv_module_kwargs = [
+        {'kernel_size': 3, 'stride': 1, 'padding': 0},
+        {'kernel_size': 3, 'stride': 2, 'padding': 0},
+        {'kernel_size': 3, 'stride': 2, 'padding': 0},
+        {'kernel_size': 3, 'stride': 2, 'padding': 0},
+        {'kernel_size': 3, 'stride': 2, 'padding': 0},
+    ]
+    for idx, kwargs in enumerate(conv_module_kwargs):
+        height_width = conv2d_output_shape(height_width, kwargs['kernel_size'],
+                                           kwargs['stride'], kwargs.get('padding', 0))
+        print(f'After conv module {idx + 1} ({kwargs}) -> {height_width}')
+
+    """
+    # Decoder
+    height_width = (8, 8)
+    print(f'Initial size (after reshaping connected layer output) -> {height_width}')
+    conv_module_kwargs = [
+        {'kernel_size': 1, 'stride': 1},
+        {'kernel_size': 5, 'stride': 2, 'padding': 2, 'output_padding': 1},
+        {'kernel_size': 5, 'stride': 2, 'padding': 2, 'output_padding': 1},
+        {'kernel_size': 5, 'stride': 2, 'padding': 2, 'output_padding': 1},
+        {'kernel_size': 5, 'stride': 2, 'padding': 2, 'output_padding': 1},
+        {'kernel_size': 1, 'stride': 1}
+    ]
+    for idx, kwargs in enumerate(conv_module_kwargs):
+        height_width = convtranspose2d_output_shape(height_width, kwargs['kernel_size'],
+                                                    kwargs['stride'], kwargs.get('padding', 0),
+                                                    1, kwargs.get('output_padding', 0))
+        print(f'After transpose conv module {idx + 1} ({kwargs}) -> {height_width}')
+
+    """
+
+
 class BaurEncoderMnist(BaurEncoder):
     pass
 
@@ -203,4 +271,4 @@ class BaurDecoderMnist(BaurDecoder):
 
 
 if __name__ == '__main__':
-    print_feature_map_sizes_baur()
+    print_feature_map_sizes_xiaoran()
