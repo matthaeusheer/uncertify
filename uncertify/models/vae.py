@@ -142,7 +142,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         else:
             raise ValueError(f'Loss type "{self._loss_type}" not supported.')
         log_p_x_z = rec_dist.log_prob(observation)
-        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each sample
+        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each slice
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
@@ -152,7 +152,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
         # KL(q(z|x), p(z))
         kl_div = dist.kl_divergence(z_post, z_prior)
-        kl_div = torch.mean(kl_div, dim=1)  # KL divergences as we would get them per sample in the batch
+        kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
         kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
         # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise

@@ -123,11 +123,12 @@ def main(args: argparse.Namespace) -> None:
     logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=Path(__file__).stem)
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
-                      'val_check_interval': 0.3,  # check (1 / value) * times per train epoch
+                      'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
                       'distributed_backend': 'ddp',
                       #'limit_train_batches': 0.1,
                       #'limit_val_batches': 0.1,
+                      'max_epochs': 40,
                       'profiler': True,
                       'fast_dev_run': False}
     early_stop_callback = EarlyStopping(

@@ -1,6 +1,8 @@
 import logging
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
+from collections import defaultdict
 
 import torch
 from torch.utils.data import DataLoader
@@ -11,44 +13,11 @@ from uncertify.evaluation.utils import threshold_batch_to_one_zero, residual_l1_
 from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.custom_types import Tensor
 
-from typing import Generator, Callable, Iterable, Tuple, Optional
+from typing import Generator, Callable, Iterable, Tuple, Optional, List, Dict
 
 LOG = logging.getLogger(__name__)
 
-
-@dataclass
-class PerPixelResults:
-    pass
-
-
-@dataclass
-class PerSampleResults:
-    dice_per_patient_mean: float = None
-    dice_per_patient_std: float = None
-    iou_per_patient_mean: float = None
-    iou_per_patient_std: float = None
-
-
-@dataclass
-class MultiThreshAnalysis:
-    """Performance behaviour for different residual thresholds instead of only looking at the one determined."""
-    thresholds: Iterable[float] = None
-    dice_scores_mean: Iterable[float] = None
-    dice_scores_std: Iterable[float] = None
-
-
-@dataclass
-class OodResults:
-    pass
-
-
-@dataclass
-class InferenceResults:
-    accepted_fpr: float
-    residual_threshold: float
-    per_pixel_results: PerPixelResults
-    per_sample_results: PerSampleResults
-    ood_results: OodResults
+ABNORMAL_PIXEL_COUNT = 20  # Mark sample as abnormal when it has more than that amount of abnormal pixels
 
 
 @dataclass
@@ -67,6 +36,33 @@ class BatchInferenceResult:
     kl_div: Tensor = None
     rec_err: Tensor = None
     latent_code: Tensor = None
+
+
+@dataclass
+class AnomalyScores:
+    y_true: List[float] = field(default_factory=list)
+    y_pred_proba: List[float] = field(default_factory=list)
+    y_pred: List[float] = field(default_factory=list)
+
+
+class SliceWiseCriteria(Enum):
+    """Anomaly score criteria which can be used for slice-wise anomaly detection."""
+    REC_TERM = 1
+    KL_TERM = 2
+    ELBO = 3
+
+
+@dataclass
+class SliceWiseAnomalyScores:
+    criteria: SliceWiseCriteria
+    anomaly_score: AnomalyScores = AnomalyScores()
+
+
+@dataclass
+class AnomalyInferenceScores:
+    """Container for pixel-wise and slice-wise anomaly detection predictions."""
+    pixel_wise: AnomalyScores = field(default_factory=list)
+    slice_wise: Dict[str, SliceWiseAnomalyScores] = field(default_factory=dict)
 
 
 def yield_inference_batches(data_loader: DataLoader,
@@ -127,11 +123,11 @@ def yield_inference_batches(data_loader: DataLoader,
         yield result
 
 
-def yield_y_true_y_pred(data_loader: DataLoader,
-                        trained_model: torch.nn.Module,
-                        max_n_batches: int = None,
-                        residual_threshold: float = None,
-                        residual_fn: Callable = residual_l1_max) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+def yield_anomaly_predictions(data_loader: DataLoader,
+                              trained_model: torch.nn.Module,
+                              max_n_batches: int = None,
+                              residual_threshold: float = None,
+                              residual_fn: Callable = residual_l1_max) -> AnomalyInferenceScores:
     """Yield flattened vectors over all (of max_n_batches, if not None) batches for y_true and y_pred.
 
     For Args: see yield_reconstruction_batches. Similar.
@@ -140,9 +136,10 @@ def yield_y_true_y_pred(data_loader: DataLoader,
         a tuple of (y_true, anomaly_score) where the two entries are numpy arrays representing the true anomaly label
         and the anomaly score (residual value) for each pixel within the brain mask
     """
-    y_true_batch_list = []
-    anomaly_score_batch_list = []
-    y_pred_batch_list = []
+    # Initially empty scores objects to fill up subsequently
+    anomaly_scores = AnomalyInferenceScores(pixel_wise=AnomalyScores(),
+                                            slice_wise={criteria.name: SliceWiseAnomalyScores(criteria)
+                                                        for criteria in SliceWiseCriteria})
 
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader=data_loader,
                                                               trained_model=trained_model,
@@ -150,23 +147,36 @@ def yield_y_true_y_pred(data_loader: DataLoader,
                                                               residual_threshold=residual_threshold,
                                                               residual_fn=residual_fn)):
         with torch.no_grad():
+            # Step 1 - Pixel-wise
             # Get ground truth and anomaly score / residual (higher residual means higher anomaly score)
             batch_y_true = batch.segmentation[batch.mask].flatten().numpy()
-            y_true_batch_list.append(batch_y_true)
+            anomaly_scores.pixel_wise.y_true.extend(batch_y_true)
 
             anomaly_score = batch.residual[batch.mask].flatten().numpy()
-            anomaly_score_batch_list.append(anomaly_score)
+            anomaly_scores.pixel_wise.y_pred_proba.extend(anomaly_score)
 
             if residual_threshold is not None:
                 batch_y_pred = batch.residuals_thresholded[batch.mask].flatten().numpy()
-                y_pred_batch_list.append(batch_y_pred)
+                anomaly_scores.pixel_wise.y_pred.extend(batch_y_pred)
 
-    # Concatenate ground truths and scores over all batches
-    y_true = np.hstack(y_true_batch_list)
-    y_pred_proba = np.hstack(anomaly_score_batch_list)
-    y_pred = np.hstack(y_pred_batch_list) if len(y_pred_batch_list) > 0 else None
-
-    return y_true, y_pred_proba, y_pred
+            # Step 2 - Slice-wise
+            # Treat the loss term components as anomaly scores
+            slice_wise_kl_div = batch.kl_div
+            slice_wise_rec_error = batch.kl_div
+            slice_wise_elbo = -slice_wise_kl_div + slice_wise_rec_error
+            anomaly_scores.slice_wise[SliceWiseCriteria.KL_TERM.name].anomaly_score.y_pred_proba.extend(slice_wise_kl_div)
+            anomaly_scores.slice_wise[SliceWiseCriteria.REC_TERM.name].anomaly_score.y_pred_proba.extend(slice_wise_rec_error)
+            anomaly_scores.slice_wise[SliceWiseCriteria.ELBO.name].anomaly_score.y_pred_proba.extend(slice_wise_elbo)
+            # Get ground truth by checking number of marked pixels
+            slice_wise_n_abnormal_pixels = torch.sum(batch.segmentation > 0, axis=(1, 2, 3)).numpy()
+            slice_wise_is_abnormal = [count > ABNORMAL_PIXEL_COUNT for count in slice_wise_n_abnormal_pixels]
+            for criteria in SliceWiseCriteria:
+                anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.extend(slice_wise_is_abnormal)
+    print(anomaly_scores.slice_wise.keys())
+    for key, val in anomaly_scores.slice_wise.items():
+        print(key)
+        print(val.criteria)
+    return anomaly_scores
 
 
 def infer_latent_space_samples(model: torch.nn.Module, latent_samples: Tensor) -> Tensor:

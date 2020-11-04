@@ -39,8 +39,8 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
     return fig
 
 
-def plot_roc_curve(fpr: list, tpr: list, auc: float,
-                   calculated_threshold: float = None, thresholds: list = None, **kwargs) -> plt.Figure:
+def plot_roc_curve(fpr: Iterable, tpr: Iterable, auc: float,
+                   calculated_threshold: float = None, thresholds: Iterable = None, **kwargs) -> plt.Figure:
     """Plots the ROC curve."""
     fig, ax = setup_plt_figure(xlabel='False Positive Rate', ylabel='True Positive Rate', **kwargs)
     ax.plot(fpr, tpr, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUC = {auc:.2f}')
@@ -57,8 +57,9 @@ def plot_roc_curve(fpr: list, tpr: list, auc: float,
     return fig
 
 
-def plot_precision_recall_curve(precision: list, recall: list, auprc: float,
-                                calculated_threshold: float = None, thresholds: list = None, **kwargs) -> plt.Figure:
+def plot_precision_recall_curve(precision: Iterable, recall: Iterable, auprc: float,
+                                calculated_threshold: float = None, thresholds: Iterable = None,
+                                **kwargs) -> plt.Figure:
     """Plots the PRC curve."""
     fig, ax = setup_plt_figure(xlabel='Recall', ylabel='Precision', **kwargs)
     ax.plot(precision, recall, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUPRC = {auprc:.2f}')

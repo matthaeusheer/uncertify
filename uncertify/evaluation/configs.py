@@ -1,11 +1,12 @@
 import json
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from uncertify.data.preprocessing.preprocessing_config import PreprocessConfig
+from uncertify.evaluation.inference import SliceWiseCriteria
 
-from typing import Union
+from typing import Union, List
 
 
 @dataclass
@@ -42,6 +43,32 @@ class EvaluationConfig:
 
 
 @dataclass
+class AnomalyDetectionResult:
+    au_prc: float = None
+    au_roc: float = None
+
+
+@dataclass
+class PixelAnomalyDetectionResult(AnomalyDetectionResult):
+    # Residual pixel threshold calculation
+    best_threshold: float = None
+
+    # Segmentation performance at best threshold
+    per_patient_dice_score_mean: float = None
+    per_patient_dice_score_std: float = None
+
+
+@dataclass
+class SliceAnomalyDetectionResult(AnomalyDetectionResult):
+    criteria: SliceWiseCriteria = None
+
+
+@dataclass
+class SliceAnomalyDetectionResults:
+    results: List[SliceAnomalyDetectionResult] = field(default_factory=list)
+
+
+@dataclass
 class EvaluationResult:
     """A data class holding every single result which comes out of a whole evaluation pipeline run."""
     # Some path and file name stuff
@@ -50,17 +77,8 @@ class EvaluationResult:
     plot_dir_name: str = 'plots'
     img_dir_name: str = 'images'
 
-    # Residual pixel threshold calculation
-    best_threshold: float = None
-
-    # Segmentation performance
-    dice_score_global: float = None
-    per_patient_dice_score_mean: float = None
-    per_patient_dice_score_std: float = None
-
-    # Pixel-wise anomaly detection performance
-    au_prc: float = None
-    au_roc: float = None
+    pixel_anomaly_result: PixelAnomalyDetectionResult = PixelAnomalyDetectionResult()
+    slice_anomaly_results: SliceAnomalyDetectionResults = SliceAnomalyDetectionResults()
 
     @property
     def current_run_number(self) -> int:
