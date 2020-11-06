@@ -1,3 +1,4 @@
+from pathlib import Path
 from collections import defaultdict
 from math import pow
 
@@ -5,6 +6,7 @@ import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 from uncertify.evaluation.inference import yield_inference_batches
+from uncertify.models.vae import load_vae_baur_model
 
 from typing import Iterable, List
 
@@ -38,7 +40,7 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
     for model_idx, model in enumerate(models):  # will yield same input data for every ensemble model
         for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
                                                                   progress_bar_suffix=f'WAIC (ensemble {model_idx})')):
-            per_slice_log_likelihoods = -batch.kl_div.detach().numpy() + batch.rec_err.detach().numpy()
+            per_slice_log_likelihoods = -batch.kl_div + batch.rec_err
             for slice_idx, log_likelihood in enumerate(per_slice_log_likelihoods):
                 slice_wise_log_likelihoods[batch_idx * batch_size + slice_idx].append(log_likelihood)
 
@@ -50,3 +52,11 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
         slice_wise_waic_scores.append(waic)
 
     return slice_wise_waic_scores
+
+
+def load_ensemble_models(dir_path: Path, file_names: List[str], model_type: str = 'vae_baur') -> List[nn.Module]:
+    assert model_type == 'vae_baur', f'No other model is defined for loading ensemble methods yet.'
+    models = []
+    for name in file_names:
+        models.append(load_vae_baur_model(dir_path / name))
+    return models

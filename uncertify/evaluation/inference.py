@@ -2,18 +2,15 @@ import logging
 import itertools
 from dataclasses import dataclass, field
 from enum import Enum
-from collections import defaultdict
 
 import torch
 from torch.utils.data import DataLoader
-import numpy as np
 from tqdm import tqdm
 
 from uncertify.evaluation.utils import threshold_batch_to_one_zero, residual_l1_max, convert_segmentation_to_one_zero
-from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.utils.custom_types import Tensor
 
-from typing import Generator, Callable, Iterable, Tuple, Optional, List, Dict
+from typing import Generator, Callable, List, Dict
 
 LOG = logging.getLogger(__name__)
 
@@ -55,7 +52,7 @@ class SliceWiseCriteria(Enum):
 @dataclass
 class SliceWiseAnomalyScores:
     criteria: SliceWiseCriteria
-    anomaly_score: AnomalyScores = AnomalyScores()
+    anomaly_score: AnomalyScores
 
 
 @dataclass
@@ -94,7 +91,9 @@ def yield_inference_batches(data_loader: DataLoader,
         scan_batch = get_batch_fn(batch)
 
         # Run actual inference for batch
-        inference_result = trained_model(scan_batch)
+        trained_model.eval()
+        with torch.no_grad():
+            inference_result = trained_model(scan_batch)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
         # Do residual calculation
@@ -118,6 +117,10 @@ def yield_inference_batches(data_loader: DataLoader,
 
         for key, value in zip(['total_loss', 'mean_kld_div', 'mean_rec_err', 'kl_div', 'rec_err'],
                               [total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err]):
+            if len(value.shape) == 0:  # single values
+                value = float(value)
+            else:
+                value = value.detach().numpy()
             result.__setattr__(key, value)
 
         yield result
@@ -138,7 +141,7 @@ def yield_anomaly_predictions(data_loader: DataLoader,
     """
     # Initially empty scores objects to fill up subsequently
     anomaly_scores = AnomalyInferenceScores(pixel_wise=AnomalyScores(),
-                                            slice_wise={criteria.name: SliceWiseAnomalyScores(criteria)
+                                            slice_wise={criteria.name: SliceWiseAnomalyScores(criteria, AnomalyScores())
                                                         for criteria in SliceWiseCriteria})
 
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader=data_loader,
@@ -162,20 +165,16 @@ def yield_anomaly_predictions(data_loader: DataLoader,
             # Step 2 - Slice-wise
             # Treat the loss term components as anomaly scores
             slice_wise_kl_div = batch.kl_div
-            slice_wise_rec_error = batch.kl_div
+            slice_wise_rec_error = batch.rec_err
             slice_wise_elbo = -slice_wise_kl_div + slice_wise_rec_error
-            anomaly_scores.slice_wise[SliceWiseCriteria.KL_TERM.name].anomaly_score.y_pred_proba.extend(slice_wise_kl_div)
-            anomaly_scores.slice_wise[SliceWiseCriteria.REC_TERM.name].anomaly_score.y_pred_proba.extend(slice_wise_rec_error)
-            anomaly_scores.slice_wise[SliceWiseCriteria.ELBO.name].anomaly_score.y_pred_proba.extend(slice_wise_elbo)
+            anomaly_scores.slice_wise['KL_TERM'].anomaly_score.y_pred_proba.extend(list(slice_wise_kl_div))
+            anomaly_scores.slice_wise['REC_TERM'].anomaly_score.y_pred_proba.extend(list(slice_wise_rec_error))
+            anomaly_scores.slice_wise['ELBO'].anomaly_score.y_pred_proba.extend(list(slice_wise_elbo))
             # Get ground truth by checking number of marked pixels
             slice_wise_n_abnormal_pixels = torch.sum(batch.segmentation > 0, axis=(1, 2, 3)).numpy()
             slice_wise_is_abnormal = [count > ABNORMAL_PIXEL_COUNT for count in slice_wise_n_abnormal_pixels]
             for criteria in SliceWiseCriteria:
                 anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.extend(slice_wise_is_abnormal)
-    print(anomaly_scores.slice_wise.keys())
-    for key, val in anomaly_scores.slice_wise.items():
-        print(key)
-        print(val.criteria)
     return anomaly_scores
 
 

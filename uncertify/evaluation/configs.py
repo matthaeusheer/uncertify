@@ -12,15 +12,15 @@ from typing import Union, List
 @dataclass
 class PixelThresholdSearchConfig:
     # Accepted false positive rate when searching for threshold
-    accepted_fpr: float = 0.05
+    accepted_fpr: float = 0.1
     # Min, max, and number of values for fpr vs threshold calculations
     min_val = 0.0
-    max_val = 3.0
-    num_values = 5
+    max_val = 4.0
+    num_values = 7
     # Subsequent Golden Section Search parameters
     gss_lower_val = 0.0
-    gss_upper_val = 1.0
-    gss_tolerance = 0.003
+    gss_upper_val = 10.0
+    gss_tolerance = 0.001
 
 
 @dataclass
@@ -30,6 +30,7 @@ class PerformanceEvaluationConfig:
     max_val = 3.0
     num_values = 5
     do_iou = False
+    do_multiple_thresholds = False
 
 
 @dataclass
@@ -40,12 +41,16 @@ class EvaluationConfig:
     use_n_batches: int = None  # Handy for faster evaluation or debugging
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
+    do_plots: bool = False
 
 
 @dataclass
 class AnomalyDetectionResult:
-    au_prc: float = None
-    au_roc: float = None
+    au_prc: float = 0.0
+    au_roc: float = 0.0
+
+    def __str__(self) -> str:
+        return f'AU_ROC {self.au_roc:.2f}, AU_PRC: {self.au_prc:.2f}'
 
 
 @dataclass
@@ -57,15 +62,30 @@ class PixelAnomalyDetectionResult(AnomalyDetectionResult):
     per_patient_dice_score_mean: float = None
     per_patient_dice_score_std: float = None
 
+    def __str__(self) -> str:
+        return f'{super().__str__()}, Dice(mean/std): ' \
+               f'({self.per_patient_dice_score_mean:.2f}, {self.per_patient_dice_score_std:.2f}) '
+
+
+@dataclass
+class OODDetectionResult(AnomalyDetectionResult):
+    pass
+
 
 @dataclass
 class SliceAnomalyDetectionResult(AnomalyDetectionResult):
     criteria: SliceWiseCriteria = None
 
+    def __str__(self) -> str:
+        return f'Criteria {self.criteria}, {super().__str__()}'
+
 
 @dataclass
 class SliceAnomalyDetectionResults:
     results: List[SliceAnomalyDetectionResult] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        return f'\n'.join([str(result) for result in self.results])
 
 
 @dataclass
@@ -73,12 +93,12 @@ class EvaluationResult:
     """A data class holding every single result which comes out of a whole evaluation pipeline run."""
     # Some path and file name stuff
     out_dir_path: Union[Path, str]
+    pixel_anomaly_result: PixelAnomalyDetectionResult
+    slice_anomaly_results: SliceAnomalyDetectionResults
+    ood_detection_result: OODDetectionResult
     run_dir: str = None
     plot_dir_name: str = 'plots'
     img_dir_name: str = 'images'
-
-    pixel_anomaly_result: PixelAnomalyDetectionResult = PixelAnomalyDetectionResult()
-    slice_anomaly_results: SliceAnomalyDetectionResults = SliceAnomalyDetectionResults()
 
     @property
     def current_run_number(self) -> int:
