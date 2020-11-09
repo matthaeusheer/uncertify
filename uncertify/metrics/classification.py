@@ -1,7 +1,5 @@
 import numpy as np
 
-from typing import Tuple
-
 
 def true_positives(prediction: np.ndarray, ground_truth: np.ndarray) -> int:
     return int(np.sum(np.logical_and(prediction == 1, ground_truth == 1)))

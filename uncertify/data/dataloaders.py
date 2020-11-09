@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 
 from uncertify.data.np_transforms import NumpyReshapeTransform, Numpy2PILTransform
 from uncertify.data.datasets import Brats2017HDF5Dataset, CamCanHDF5Dataset, MnistDatasetWrapper
+from uncertify.data.datasets import GaussianNoiseDataset
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Any, Optional
@@ -18,6 +19,7 @@ class DatasetType(Enum):
     MNIST = 1
     BRATS17 = 2
     CAMCAN = 3
+    GAUSS_NOISE = 4
 
 
 BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
@@ -28,57 +30,84 @@ BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
 ])
 
 
-def dataloader_factory(dataset_type: DatasetType, batch_size: int, path: Path = None,
+def dataloader_factory(dataset_type: DatasetType, batch_size: int,
+                       train_set_path: Path = None, val_set_path: Path = None,
                        transform: Any = None, num_workers: int = 0,
-                       shuffle_train: bool = True, shuffle_val: bool = False) -> Tuple[Optional[DataLoader],
-                                                                                       Optional[DataLoader]]:
-    """Returns a train and val dataloader for given dataset type."""
+                       shuffle_train: bool = True, shuffle_val: bool = False,
+                       uppercase_keys: bool = False, **kwargs) -> Tuple[Optional[DataLoader],
+                                                                        Optional[DataLoader]]:
+    """Returns a train and val dataloader for given dataset type based on the configuration given through arguments.
+
+    Returns
+        A tuple of (train_dataloader, val_dataloader). If there is no train or validation dataloader, e.g. BraTS is
+        only used for validation, the None is set for this item, e.g. for BraTS: (None, brats_val_dataloader).
+    """
     assert isinstance(dataset_type, DatasetType), f'Need to provide valid DatasetType (enum).'
-    if dataset_type == DatasetType.MNIST:
-        return (mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform),
-                mnist_val_dataloader(batch_size, num_workers, transform))
-    elif dataset_type == DatasetType.BRATS17:
-        assert path is not None, f'BRATS17 needs a path in the factory!'
-        return (None,
-                brats17_val_dataloader(path, batch_size, shuffle_val, num_workers, transform))
-    elif dataset_type == DatasetType.CAMCAN:
-        return (camcan_data_loader('train', batch_size, shuffle_train, num_workers, transform),
-                camcan_data_loader('val', batch_size, shuffle_val, num_workers, transform))
+
+    if dataset_type is DatasetType.MNIST:
+        train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform, **kwargs)
+        val_dataloader = mnist_val_dataloader(batch_size, shuffle_val, num_workers, transform, **kwargs)
+
+    elif dataset_type is DatasetType.BRATS17:
+        assert val_set_path is not None, f'For BraTS need to provide a validation dataset path!'
+        train_dataloader = None
+        val_dataloader = brats17_val_dataloader(val_set_path, batch_size, shuffle_val,
+                                                num_workers, transform, uppercase_keys)
+
+    elif dataset_type is DatasetType.CAMCAN:
+        train_dataloader, val_dataloader = camcan_data_loader(train_set_path, val_set_path, batch_size,
+                                                              shuffle_train, shuffle_val,
+                                                              num_workers, transform, uppercase_keys)
+
+    elif dataset_type is DatasetType.GAUSS_NOISE:
+        # TODO: Shape etc. is still hardcoded here to 128x128
+        noise_set = GaussianNoiseDataset()
+        train_dataloader = None
+        val_dataloader = DataLoader(noise_set, batch_size=batch_size)
     else:
         raise ValueError(f'DatasetType {dataset_type} not supported by this factory method.')
 
+    return train_dataloader, val_dataloader
 
-def brats17_val_dataloader(hdf_path: Path, batch_size: int, shuffle: bool,
-                           num_workers: int = 0, transform: Any = None) -> DataLoader:
-    assert hdf_path.exists(), f'BraTS17 hdf5 file {hdf_path} does not exist!'
+
+def brats17_val_dataloader(hdf5_path: Path, batch_size: int, shuffle: bool,
+                           num_workers: int = 0, transform: Any = None,
+                           uppercase_keys: bool = False) -> DataLoader:
+    """Create a BraTS dataloader based on a hdf_path."""
+    assert hdf5_path.exists(), f'BraTS17 hdf5 file {hdf5_path} does not exist!'
     if transform is None:
         transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
-    brats_val_dataset = Brats2017HDF5Dataset(hdf5_file_path=hdf_path, transform=transform)
-    return DataLoader(brats_val_dataset, batch_size=batch_size,
-                      shuffle=shuffle, num_workers=num_workers)
+    brats_val_dataset = Brats2017HDF5Dataset(hdf5_file_path=hdf5_path, transform=transform,
+                                             uppercase_keys=uppercase_keys)
+    val_dataloader = DataLoader(brats_val_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    return val_dataloader
 
 
-def camcan_data_loader(mode: str, batch_size: int, shuffle: bool,
-                       num_workers: int = 0, transform: Any = None) -> DataLoader:
-    assert mode in {'train', 'val'}, f'Wrong mode.'
-    if mode == 'val':
-        default_location = DATA_DIR_PATH / 'camcan/camcan_t2_val_set.hdf5'
-        if shuffle:
-            LOG.warning(f'Attention! Using shuffle on CamCAN validation dataset!')
-    elif mode == 'train':
-        default_location = DATA_DIR_PATH / 'camcan/camcan_t2_train_set.hdf5'
-    else:
-        raise ValueError(f'Cannot handle mode {mode}.')
-    assert default_location.exists(), f'Default camcan hdf5 file {default_location} does not exist!'
-    if transform is None:  # default transform
+def camcan_data_loader(hdf5_train_path: Path = None, hdf5_val_path: Path = None,
+                       batch_size: int = 64, shuffle_train: bool = True, shuffle_val: bool = False,
+                       num_workers: int = 0, transform: Any = None,
+                       uppercase_keys: bool = False) -> Tuple[DataLoader, DataLoader]:
+    """Create CamCAN train and / or val dataloaders based on paths to hdf5 files."""
+    assert not all(path is None for path in {hdf5_train_path, hdf5_val_path}), \
+        f'Need to give a train and / or test path!'
+    if transform is None:
         transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
-    camcan_dataset = CamCanHDF5Dataset(hdf5_file_path=default_location, transform=transform)
-    camcan_dataloader = DataLoader(camcan_dataset, batch_size=batch_size,
-                                   shuffle=shuffle, num_workers=num_workers)
-    return camcan_dataloader
+    if hdf5_train_path is None:
+        train_dataloader = None
+    else:
+        train_set = CamCanHDF5Dataset(hdf5_file_path=hdf5_train_path, transform=transform,
+                                      uppercase_keys=uppercase_keys)
+        train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=shuffle_train, num_workers=num_workers)
+    if hdf5_val_path is None:
+        val_dataloader = None
+    else:
+        val_set = CamCanHDF5Dataset(hdf5_file_path=hdf5_val_path, transform=transform, uppercase_keys=uppercase_keys)
+        val_dataloader = DataLoader(val_set, batch_size=batch_size, shuffle=shuffle_val, num_workers=num_workers)
+    return train_dataloader, val_dataloader
 
 
-def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0, transform: Any = None) -> DataLoader:
+def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                           transform: Any = None, **kwargs) -> DataLoader:
     if transform is None:
         transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
@@ -86,13 +115,14 @@ def mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                                            train=True,
                                            download=True,
                                            transform=transform)
-    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set),
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=train_set, label=kwargs.get('mnist_label', None)),
                       batch_size=batch_size,
                       shuffle=shuffle,
                       num_workers=num_workers)
 
 
-def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any = None) -> DataLoader:
+def mnist_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                         transform: Any = None, **kwargs) -> DataLoader:
     if transform is None:
         transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
                                                     torchvision.transforms.ToTensor()])
@@ -100,7 +130,7 @@ def mnist_val_dataloader(batch_size: int, num_workers: int = 0, transform: Any =
                                          train=False,
                                          download=True,
                                          transform=transform)
-    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set),
+    return DataLoader(MnistDatasetWrapper(mnist_dataset=val_set, label=kwargs.get('mnist_label', None)),
                       batch_size=batch_size,
-                      shuffle=False,
+                      shuffle=shuffle,
                       num_workers=num_workers)

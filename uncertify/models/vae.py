@@ -2,43 +2,55 @@
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
 import dataclasses
+from pathlib import Path
+from itertools import islice
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from torch import nn
-from torch.nn import functional as torch_functional
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
 import torch.distributions as dist
 
 from uncertify.models.gradient import Gradient
-from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing
-from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, CyclicBetaConfig
+from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing
+from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
+    CyclicBetaConfig, SigmoidBetaConfig
+from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
+from uncertify.utils.sampling import random_uniform_ring
+from uncertify.evaluation.utils import residual_l1_max
 from uncertify.utils.custom_types import Tensor
 
-from typing import Tuple, List, Dict, Callable
+from typing import Tuple, List, Dict
 
 LATENT_SPACE_DIM = 128
 
 
 class VariationalAutoEncoder(pl.LightningModule):
     def __init__(self, encoder: nn.Module, decoder: nn.Module,
-                 beta_config: BetaConfig = ConstantBetaConfig(beta=1.0)) -> None:
+                 beta_config: BetaConfig = ConstantBetaConfig(beta=1.0),
+                 n_m_factor: float = 1.0, ood_dataloaders: List[Dict[str, DataLoader]] = None,
+                 loss_type: str = 'l1') -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
-        Args:
+        Arguments:
             encoder: the encoder module (can be pytorch or lightning module)
             decoder: the decoder module (can be pytorch or lightning module)
             beta_config: configuration on how to handle the beta parameter (constant, monotonic or cyclic)
+            ood_dataloaders: a list of dataloaders which will be used to check reconstructions of during training
+            loss_type: can be either "l1" or "l2" to use either Laplace or Gaussian distributions over reconstruction
         """
         super().__init__()
         self._encoder = encoder
         self._decoder = decoder
         self._gradient_net = Gradient()
-        self.val_counter = 0
         self._train_step_counter = 0
         self._beta_config = beta_config
         self.save_hyperparameters('decoder', 'encoder')
+        self._n_m_factor = n_m_factor
+        self._ood_dataloaders = ood_dataloaders
+        self._loss_type = loss_type
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
@@ -53,96 +65,102 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     @staticmethod
     def _reparameterize(mu: Tensor, log_var: Tensor) -> Tensor:
-        """Applying reparameterization trick."""
-        std = torch.exp(0.5 * log_var)  # log_var = log(sigma^2) = 2*log(sigma) -> sigma = exp(0.5*log_var)
+        """Applying re-parameterization trick."""
+        std = torch.exp(0.5 * log_var)  # log_var = log(std^2) = 2*log(std) -> std = exp(0.5*log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
-            features)
-        logger_losses = {'train_loss': total_loss,
-                         'train_reconstruction_err': mean_rec_err,
-                         'train_kld_dic': mean_kl_div}
-        self.logger.experiment.add_scalars('train_losses_vs_step', logger_losses,
+
+        # Run batch through model and get losses
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+
+        # Log training losses to Tensorboard
+        train_loss_terms = {'train_reconstruction_error': mean_rec_err,
+                            'train_kl_div': mean_kl_div}
+        self.logger.experiment.add_scalar('train_total_loss', total_loss,
+                                          global_step=self._train_step_counter)
+        self.logger.experiment.add_scalars('train_loss_term', train_loss_terms,
                                            global_step=self._train_step_counter)
         self.logger.experiment.add_scalar('beta', self._calculate_beta(self._train_step_counter),
                                           global_step=self._train_step_counter)
-
         self._train_step_counter += 1
-        return {'loss': total_loss}
+        return {'loss': total_loss}  # w.r.t this will be optimized
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
-        features = batch['scan']  # some datasets (e.g. brats) holds also 'seg' batch
-        reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(
-            features)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, log_p_x_z = self.loss_function(reconstruction, features, mu,
-                                                                                      log_var)
+        features = batch['scan']
 
-        return {'val_mean_total_loss': total_loss, 'val_mean_kl_div': mean_kl_div, 'val_mean_rec_err': mean_rec_err,
-                'reconstructed_batch': reconstruction, 'input_batch': features}
+        # Run validation batch through model and get losses
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+
+        # Those values will be tracked and can be accessed in validation_epoch_end
+        val_return_dict = {'val_total_loss': total_loss,
+                           'val_kl_div': mean_kl_div,
+                           'val_rec_err': mean_rec_err,
+                           'reconstructed_batch': rec_batch,
+                           'input_batch': features}
+        return val_return_dict
 
     def validation_epoch_end(self, outputs: List[Dict]) -> dict:
-        # Compute average validation loss
-        avg_val_losses = torch.stack([x['val_mean_total_loss'] for x in outputs])
-        avg_val_kld_losses = torch.stack([x['val_mean_kl_div'] for x in outputs])
-        avg_val_recon_losses = torch.stack([x['val_mean_rec_err'] for x in outputs])
-        losses = {'avg_val_mean_total_loss': avg_val_losses.mean(),
-                  'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
-                  'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
-        self.logger.experiment.add_scalars('avg_val_mean_losses', losses, global_step=self._train_step_counter)
-        # Sample batches from from validation steps and visualize
-        np.random.seed(0)  # Make sure we always use the same samples for visualization
-        out_samples = np.random.choice(outputs, min(len(outputs), 4), replace=False)
-        for idx, out_sample in enumerate(out_samples):
-            input_img_grid = torchvision.utils.make_grid(out_sample['input_batch'], normalize=True)
-            output_img_grid = torchvision.utils.make_grid(out_sample['reconstructed_batch'], normalize=True)
-            residuals = torch.abs(out_sample['reconstructed_batch'] - out_sample['input_batch'])
-            residual_img_grid = torchvision.utils.make_grid(residuals, normalize=True)
-            grad_residuals = self._gradient_net.forward(residuals)
-            grad_diff_grid = torchvision.utils.make_grid(grad_residuals, normalize=True)
-            grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
-            self.logger.experiment.add_image(f'random_batch_{idx + 1}', grid, global_step=self.val_counter)
+        # Compute average validation losses and log
+        avg_val_total_losses = torch.stack([x['val_total_loss'] for x in outputs])
+        avg_val_kld_losses = torch.stack([x['val_kl_div'] for x in outputs])
+        avg_val_recon_losses = torch.stack([x['val_rec_err'] for x in outputs])
+        self.logger.experiment.add_scalar('avg_val_mean_total_loss', avg_val_total_losses.mean(),
+                                          global_step=self._train_step_counter)
+        loss_terms = {'avg_val_mean_kl_div': avg_val_kld_losses.mean(),
+                      'avg_val_mean_rec_err': avg_val_recon_losses.mean()}
+        self.logger.experiment.add_scalars('avg_val_mean_loss_terms', loss_terms, global_step=self._train_step_counter)
+
+        # Sample from the same few batches over training and check reconstructions
+        self._log_random_eval_batch_reconstruction(outputs)
+
+        # Sample from latent space and log reconstructions, from unit Gaussian and from within ranges
+        for min_max_range in [None, (1, 2), (3, 4), (6, 7), (50, 100), (100, 150), (200, 240)]:
+            self._log_latent_samples_reconstructions(n_samples=16, min_max_radius=min_max_range)
+
+        # Sample from OOD datasets if provided
+        if self._ood_dataloaders is not None:
+            for ood_set in self._ood_dataloaders:
+                for ood_set_name, ood_dataloader in ood_set.items():
+                    self._log_ood_reconstructions(ood_set_name, ood_dataloader)
+
         for name, param in self.named_parameters():
-            self.logger.experiment.add_histogram(name, param.data, global_step=self.val_counter)
+            self.logger.experiment.add_histogram(name, param.data, global_step=self._train_step_counter)
 
-        # Sample from latent space and check reconstructions
-        n_latent_samples = 32
-        with torch.no_grad():
-            latent_samples = torch.normal(mean=0, std=torch.ones((n_latent_samples, LATENT_SPACE_DIM,))).cuda()
-            latent_sample_reconstructions = self._decoder(latent_samples)
-            latent_sample_reconstructions_grid = torchvision.utils.make_grid(latent_sample_reconstructions, padding=0,
-                                                                             normalize=True)
-            self.logger.experiment.add_image(f'random_latent_sample_reconstructions',
-                                             latent_sample_reconstructions_grid, global_step=self.val_counter)
-        self.val_counter += 1
-        return losses
+        loss_terms.update({'avg_val_mean_total_loss': avg_val_total_losses.mean()})
+        return loss_terms
 
-    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_std: Tensor,
+    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
         # p(x|z)
-        rec_dist = dist.Normal(reconstruction, 1.0)
+        if self._loss_type == 'l2':
+            rec_dist = dist.Normal(reconstruction, 1.0)  # TODO: The std parameter could be varied (tuned)!
+        elif self._loss_type == 'l1':
+            rec_dist = dist.Laplace(reconstruction, 1.0)
+        else:
+            raise ValueError(f'Loss type "{self._loss_type}" not supported.')
         log_p_x_z = rec_dist.log_prob(observation)
-        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))
+        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each slice
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
 
         # q(z|x)
-        z_post = dist.Normal(mu, torch.exp(log_std))
+        z_post = dist.Normal(mu, torch.sqrt(torch.exp(log_var)))
 
         # KL(q(z|x), p(z))
         kl_div = dist.kl_divergence(z_post, z_prior)
-        kl_div = torch.mean(kl_div, dim=1)
-
+        kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
         kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
-        # Take the mean over all batches
-        variational_lower_bound = -kl_div + log_p_x_z
-        total_loss = torch.mean(-variational_lower_bound)
+        # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise
         mean_kl_div = torch.mean(kl_div)
         mean_log_p_x_z = torch.mean(log_p_x_z)
+
+        variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
+        total_loss = -variational_lower_bound
 
         return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
 
@@ -158,4 +176,74 @@ class VariationalAutoEncoder(pl.LightningModule):
             return monotonic_annealing(train_step, **dataclasses.asdict(self._beta_config))
         elif isinstance(self._beta_config, CyclicBetaConfig):
             return cyclical_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        elif isinstance(self._beta_config, SigmoidBetaConfig):
+            return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        else:
+            raise RuntimeError(f'Beta config not supported.')
 
+    def _log_latent_samples_reconstructions(self, n_samples: int, min_max_radius: Tuple[float, float] = None) -> None:
+        """Sample from latent space and check reconstructions."""
+        with torch.no_grad():
+            if min_max_radius is None:  # sample from standard normal gaussian
+                latent_samples = torch.normal(mean=0, std=torch.ones((n_samples, LATENT_SPACE_DIM,))).cuda()
+                log_title = 'ID_mu0_std1_latent_samples'
+            else:  # sample from a certain "hyper-circle" around the normal mode
+                inner_radius, outer_radius = min_max_radius
+                latent_samples = torch.tensor(random_uniform_ring(np.zeros(128), outer_radius,
+                                                                  inner_radius, n_samples)).float().cuda()
+                log_title = f'ID_range_{inner_radius}_to_{outer_radius}_latent_samples'
+            reconstructions = self._decoder(latent_samples)
+            reconstructions_grid = torchvision.utils.make_grid(reconstructions, padding=0, normalize=True)
+            self.logger.experiment.add_image(log_title, reconstructions_grid, global_step=self._train_step_counter)
+
+    def _log_ood_reconstructions(self, set_name: str, dataloader: DataLoader) -> None:
+        """Log reconstruction and residuals of batches from OOD data."""
+        n_batches = 2
+        for batch in islice(dataloader, n_batches):
+            in_batch = batch['scan'].cuda()
+            rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(in_batch)
+            residuals, grad_residuals = self._get_residuals_and_gradient(in_batch, rec_batch)
+            grid = self._create_in_rec_res_grad_grid(in_batch, rec_batch, residuals, grad_residuals)
+            self.logger.experiment.add_image(f'OOD_{set_name}', grid, global_step=self._train_step_counter)
+
+    def _log_random_eval_batch_reconstruction(self, outputs: List[Dict],
+                                              n_batches: int = 2, max_samples: int = 32) -> None:
+        """Sample batches from from validation steps and visualize input, output, reconstruction and gradients."""
+        np.random.seed(0)  # Make sure we always use the same samples for visualization
+        out_samples = np.random.choice(outputs, min(len(outputs), n_batches), replace=False)
+        for idx, out_sample in enumerate(out_samples):
+            in_batch, rec_batch = out_sample['input_batch'], out_sample['reconstructed_batch']
+            n_slices, _, height, width = in_batch.shape
+            if max_samples < n_slices:  # Limit number of samples shown if batch-size is large to reduce storage
+                np.random.seed(0)
+                slice_indices = sorted(np.random.choice(list(range(n_slices)), max_samples, replace=False))
+                in_batch = in_batch[slice_indices, :, :, :]
+                rec_batch = rec_batch[slice_indices, :, :, :]
+            residuals, grad_residuals = self._get_residuals_and_gradient(in_batch, rec_batch)
+            grid = self._create_in_rec_res_grad_grid(in_batch, rec_batch, residuals, grad_residuals)
+            self.logger.experiment.add_image(f'ID_random_batch_{idx + 1}', grid, global_step=self._train_step_counter)
+
+    def _get_residuals_and_gradient(self, input_batch: Tensor, rec_batch: Tensor) -> Tuple[Tensor, Tensor]:
+        """For a given input batch and a reconstruction batch, create residual and residual gradient batches."""
+        residuals = residual_l1_max(rec_batch, input_batch)
+        grad_residuals = self._gradient_net.forward(residuals)
+        return residuals, grad_residuals
+
+    @staticmethod
+    def _create_in_rec_res_grad_grid(in_batch: Tensor, rec_batch: Tensor,
+                                     res_batch: Tensor, res_grad_batch: Tensor):
+        """Create a torchvision grid vom input, reconstruction, residual and residual gradient batches."""
+        input_img_grid = torchvision.utils.make_grid(in_batch, padding=0, normalize=True)
+        output_img_grid = torchvision.utils.make_grid(rec_batch, padding=0, normalize=True)
+        residual_img_grid = torchvision.utils.make_grid(res_batch, padding=0, normalize=True)
+        grad_diff_grid = torchvision.utils.make_grid(res_grad_batch, padding=0, normalize=True)
+        grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
+        return grid
+
+
+def load_vae_baur_model(checkpoint_path: Path) -> nn.Module:
+    assert checkpoint_path.exists(), f'Model checkpoint does not exist!'
+    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model

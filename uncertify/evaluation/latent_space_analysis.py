@@ -28,3 +28,8 @@ def latent_space_2d_grid(dim1: int, dim2: int, latent_space_dim: int = 128, grid
         for col_idx in range(grid_size):
             row[col_idx][dim2] = grid_values[col_idx]  # col-wise change for dim2
         yield row
+
+
+def sample_from_gauss_prior(n_samples: int, latent_space_dim: int) -> Tensor:
+    """Returns a (n_samples, latent_space_dim)-shaped tensor with samples from the Gaussian prior latent space."""
+    return torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dim)))

@@ -4,6 +4,8 @@ from tqdm import tqdm
 
 from typing import List, Tuple
 
+# TODO: Those functions should be per sample / patient, not batch-wise!
+
 
 def get_n_normal_abnormal_pixels(data_loader: DataLoader) -> Tuple[List[int], List[int], List[int]]:
     """Get the sample-wise numbers of normal and abnormal pixels.

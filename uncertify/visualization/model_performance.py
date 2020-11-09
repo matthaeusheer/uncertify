@@ -1,17 +1,23 @@
+import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
 from uncertify.visualization.plotting import setup_plt_figure
 
-from typing import Iterable, Tuple
+from typing import Iterable
+
+LOG = logging.getLogger(__name__)
 
 
 def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
                                                dice_scores: Iterable[float] = None,
+                                               dice_stds: Iterable[float] = None,
                                                iou_scores: Iterable[float] = None,
+                                               iou_stds: Iterable[float] = None,
                                                train_set_threshold: float = None,
-                                               **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+                                               **kwargs) -> plt.Figure:
+    """Plot dice and iou scores vs various residual pixel thresholds."""
     if dice_scores is None and iou_scores is None:
         raise ValueError(f'Need to provide either dice scores or iou scores or both.')
     fig, ax = setup_plt_figure(**kwargs)
@@ -19,18 +25,54 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
     if dice_scores is not None:
         if max(dice_scores) > max_score:
             max_score = max(dice_scores)
-        ax.plot(thresholds, dice_scores, linewidth=3, c='cyan', label='Dice score')
+        ax.errorbar(thresholds, dice_scores, yerr=dice_stds, linewidth=2, c='green', label='Dice score')
     if iou_scores is not None:
         if max(iou_scores) > max_score:
             max_score = max(iou_scores)
-        ax.plot(thresholds, iou_scores, linewidth=3, c='orange', label='IoU score')
+        ax.errorbar(thresholds, iou_scores, yerr=iou_stds, linewidth=2, c='green', label='IoU score')
     if train_set_threshold is not None:
         ax.plot([train_set_threshold, train_set_threshold], [0, max_score], linewidth=1, linestyle='dashed', c='Grey',
                 label=f'Training set threshold (GSS)')
     ax.set_xlabel('Pixel threshold for anomaly detection', fontweight='bold')
     ax.set_ylabel('Segmentation score', fontweight='bold')
     ax.legend(frameon=False)
-    return fig, ax
+    return fig
+
+
+def plot_roc_curve(fpr: Iterable, tpr: Iterable, auc: float,
+                   calculated_threshold: float = None, thresholds: Iterable = None, **kwargs) -> plt.Figure:
+    """Plots the ROC curve."""
+    fig, ax = setup_plt_figure(xlabel='False Positive Rate', ylabel='True Positive Rate', **kwargs)
+    ax.plot(fpr, tpr, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUC = {auc:.2f}')
+    ax.plot([0, 1], [0, 1], linewidth=1, linestyle='--', color='gray')
+
+    if calculated_threshold is not None:
+        if thresholds is None:
+            LOG.warning(f'plot_roc_curve: Cannot plot pont on ROC curve for calculated threshold since '
+                        f'thresholds list is not given.')
+        else:
+            idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - calculated_threshold))
+            ax.plot([fpr[idx]], [tpr[idx]], 'o', color='cyan')
+    ax.legend()
+    return fig
+
+
+def plot_precision_recall_curve(precision: Iterable, recall: Iterable, auprc: float,
+                                calculated_threshold: float = None, thresholds: Iterable = None,
+                                **kwargs) -> plt.Figure:
+    """Plots the PRC curve."""
+    fig, ax = setup_plt_figure(xlabel='Recall', ylabel='Precision', **kwargs)
+    ax.plot(precision, recall, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUPRC = {auprc:.2f}')
+
+    if calculated_threshold is not None:
+        if thresholds is None:
+            LOG.warning(f'plot_precision_recall_curve: Cannot plot pont on ROC curve for calculated threshold since '
+                        f'thresholds list is not given.')
+        else:
+            idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - calculated_threshold))
+            ax.plot([precision[idx]], [recall[idx]], 'o', color='cyan')
+    ax.legend()
+    return fig
 
 
 def plot_confusion_matrix(cf,

@@ -13,17 +13,20 @@ from typing import Tuple
 class SimpleVariationalAutoEncoder(VariationalAutoEncoder):
     @staticmethod
     def loss_function(x_in: Tensor, x_out: Tensor, mu: Tensor, log_var: Tensor,
-                      beta: float = 1.0) -> Tuple[Tensor, Tensor, Tensor]:
+                      beta: float = 1.0, train_step: int = None) -> Tuple[Tensor, Tensor, Tensor]:
         """Loss function of Variational Autoencoder as stated in original 'Autoencoding Variational Bayes' paper.
         Caution:
             This function returns a tuple of the individual loss terms for easy logging. Need to add them up wen used.
         """
         batch_size, _, img_height, img_width = x_in.shape
-        # reconstruction_loss = nn.BCEWithLogitsLoss(reduction='mean')(x_in, x_out)  # per pix
-        # x_out = torch.sigmoid(x_out)
-        reconstruction_loss = torch.mean(torch_functional.mse_loss(x_out, x_in, reduction='none'), dim=(1, 2, 3))
-        kld = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1)  # mean over batches
-        total_loss = torch.mean(reconstruction_loss + kld)
+
+        # Reconstruction error per sample for a batch
+        reconstruction_loss = torch.sum(torch_functional.l1_loss(x_in, x_out, reduction='none'), dim=(1, 2, 3))
+
+        # var = sigma**2
+        kld = 0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1)
+
+        total_loss = torch.mean(-kld + reconstruction_loss)
         return total_loss, torch.mean(reconstruction_loss), torch.mean(kld)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -46,7 +49,12 @@ class SimpleVariationalAutoEncoder(VariationalAutoEncoder):
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']  # some datasets (e.g. brats) holds also 'seg' batch
         reconstruction, mu, log_var, total_loss, rec_loss, kld, latent_code = self(features)
-        total_loss, rec_loss, kld = self.loss_function(reconstruction, features, mu, log_var)
+        total_loss, rec_loss, kl_div = self.loss_function(reconstruction, features, mu, log_var)
 
-        return {'val_mean_total_loss': total_loss, 'val_mean_kl_div': kld, 'val_mean_rec_err': rec_loss,
-                'reconstructed_batch': reconstruction, 'input_batch': features}
+        # Those values will be tracked and can be accessed in validation_epoch_end
+        val_return_dict = {'val_total_loss': total_loss,
+                           'val_kl_div': kl_div,
+                           'val_rec_err': rec_loss,
+                           'reconstructed_batch': reconstruction,
+                           'input_batch': features}
+        return val_return_dict
