@@ -39,11 +39,11 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
             residual = normalize_to_0_1(batch.residual)
             thresholded = batch.residuals_thresholded
             if batch.segmentation is not None:
-                seg = normalize_to_0_1(batch.segmentation)
+                seg = batch.segmentation
                 stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)
             else:
                 stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)
-            grid = torchvision.utils.make_grid(stacked, padding=0)
+            grid = torchvision.utils.make_grid(stacked, padding=0, normalize=False)
             describe = scipy.stats.describe(grid.numpy().flatten())
             print_scipy_stats_description(describe, 'normalized_grid')
             fig, ax = imshow_grid(grid, one_channel=True, **kwargs)
@@ -126,7 +126,6 @@ def plot_vae_generations(generated_samples: np.ndarray) -> plt.Figure:
 
     Args:
         generated_samples: numpy version of a generated image (e.g. returned by the VEA _decode function)
-    # TODO(matthaeusheer): This function is actually more general since it only plots images, rename appropriately
     """
     images = [sample for sample in generated_samples]
     n_imgs = len(images)

@@ -106,11 +106,11 @@ class BaurEncoder(pl.LightningModule):
 
     @staticmethod
     def define_conv_layers() -> nn.Sequential:
-        dropout_rate = 0.5
+        dropout_rate = None
         conv1 = Conv2DBlock(in_channels=1,
                             out_channels=32,
                             conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
-                            dropout_rate=0.5)
+                            dropout_rate=dropout_rate)
         conv2 = Conv2DBlock(in_channels=32,
                             out_channels=64,
                             conv_further_kwargs={'kernel_size': 5, 'stride': 2, 'padding': 2},
@@ -149,7 +149,7 @@ class BaurDecoder(nn.Module):
 
     @staticmethod
     def define_conv_layers() -> nn.Sequential:
-        dropout_rate = 0.5
+        dropout_rate = None
         conv1 = Conv2DBlock(in_channels=16,
                             out_channels=128,
                             conv_further_kwargs={'kernel_size': 1, 'stride': 1},
@@ -179,7 +179,7 @@ class BaurDecoder(nn.Module):
                             conv_further_kwargs={'kernel_size': 1, 'stride': 1},
                             normalization_module=None,
                             activation_module=None,
-                            dropout_rate=0.5)
+                            dropout_rate=dropout_rate)
         return nn.Sequential(*[conv1, conv2, conv3, conv4, conv5, conv6])
 
     def forward(self, latent_code: Tensor) -> Tensor:
@@ -260,15 +260,3 @@ def print_feature_map_sizes_xiaoran() -> None:
         print(f'After transpose conv module {idx + 1} ({kwargs}) -> {height_width}')
 
     """
-
-
-class BaurEncoderMnist(BaurEncoder):
-    pass
-
-
-class BaurDecoderMnist(BaurDecoder):
-    pass
-
-
-if __name__ == '__main__':
-    print_feature_map_sizes_xiaoran()

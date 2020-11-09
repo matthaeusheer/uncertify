@@ -36,6 +36,8 @@ HIST_REF_T2_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
 HIST_REF_T2_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'
 HDF5_OUT_FOLDER = DATA_DIR_PATH / 'processed'
 
+N4_EXECUTABLE_PATH = Path('/media/juniors/2TB_internal_HD/executables/N4code/build/N4')
+
 
 def run_preprocessing(config: BratsConfig) -> None:
     """Main pre-processing function which performs the pre-processing pipeline for all modalities and patients.
@@ -54,7 +56,7 @@ def run_preprocessing(config: BratsConfig) -> None:
     if config.limit_to_n_samples is not None:
         sample_dir_paths = sample_dir_paths[:config.limit_to_n_samples]
 
-    for sample_dir_path in tqdm(sample_dir_paths, desc='pre-processing patients'):
+    for sample_dir_path in tqdm(sample_dir_paths, desc=f'pre-processing {config.dataset_name} patients'):
         if config.print_debug:
             print(f'\n ------ Processing {sample_dir_path} ------')
         for modality in [mod for mod in config.modalities if config.modalities[mod] is True]:
@@ -133,7 +135,14 @@ def run_bias_correction_single_file(dir_path: Path, in_file_name: str, out_file_
     command = ' '.join([str(N4_EXECUTABLE_PATH), in_file_name, out_file_name])
     if print_debug:
         print(f'Running bias correction: {command}')
-    subprocess.run(command, shell=True, cwd=dir_path)
+    process = subprocess.run(command, shell=True, cwd=dir_path, capture_output=True)
+    try:
+        process.check_returncode()
+    except subprocess.CalledProcessError as error:
+        print(f'\nCalling the bias correction program failed! \n'
+              f'STDOUT: {str(process.stdout)}\n'
+              f'STDERR: {str(process.stderr)}')
+        raise
     # Now store mask because we might need it for reference histogram matching
     slices = nib.load(dir_path / out_file_name).get_fdata()
     mask = create_masks(slices)
@@ -161,7 +170,8 @@ def store_pre_processing_output(slices: np.ndarray, masks: np.ndarray, sample_di
         out_file_name_mask = create_nii_file_name(sample_dir_path.name, modality,
                                                   is_mask=True, is_unbiased=False, is_processed=True)
         nib.save(nif_mask, sample_dir_path / out_file_name_mask)
-        print(f'Saved {modality} mask sample to {sample_dir_path / out_file_name_mask}.')
+        if print_debug:
+            print(f'Saved {modality} mask sample to {sample_dir_path / out_file_name_mask}.')
 
 
 def create_dataset(config: BratsConfig) -> None:
