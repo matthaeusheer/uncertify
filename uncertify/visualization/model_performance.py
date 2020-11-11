@@ -53,6 +53,8 @@ def plot_roc_curve(fpr: Iterable, tpr: Iterable, auc: float,
         else:
             idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - calculated_threshold))
             ax.plot([fpr[idx]], [tpr[idx]], 'o', color='cyan')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
     ax.legend()
     return fig
 
@@ -71,6 +73,8 @@ def plot_precision_recall_curve(precision: Iterable, recall: Iterable, auprc: fl
         else:
             idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - calculated_threshold))
             ax.plot([precision[idx]], [recall[idx]], 'o', color='cyan')
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
     ax.legend()
     return fig
 

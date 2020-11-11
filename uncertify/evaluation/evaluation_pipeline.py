@@ -1,5 +1,6 @@
 import logging
 from functools import partial
+import random
 
 import numpy as np
 import torch
@@ -65,7 +66,8 @@ def run_evaluation_pipeline(model: nn.Module,
 
         if run_ood_detection:
             assert ensemble_models is not None, f'Need to provide list of ensemble models for WAIC OOD performance!'
-            results = run_ood_detection_performance(ensemble_models, train_dataloader, val_dataloader, eval_cfg, results)
+            results = run_ood_detection_performance(ensemble_models, train_dataloader, val_dataloader, eval_cfg,
+                                                    results)
 
         # results.to_json()
         return results
@@ -258,33 +260,80 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
     LOG.info('Running OOD detection performance...')
-    y_pred_proba = []  # These are the WAIC scores for both in- and OOD data!
-    y_true = []
+    y_pred_proba_combo = []  # These are the e.g. WAIC scores for both in- and OOD data!
+    y_true_combo = []
+    y_pred_proba_lesional = []
+    y_true_lesional = []
+    y_pred_proba_healthy = []
+    y_true_healthy = []
+
     min_length_dataloader = min(len(train_dataloader), len(val_dataloader))
     use_n_batches = min(eval_cfg.use_n_batches, min_length_dataloader)
-    for dataloader, is_ood in zip([train_dataloader, val_dataloader], [False, True]):
-        LOG.info(f'Inference on {"in-distribution" if not is_ood else "out-of-distribution"} data...')
-        waic_scores = sample_wise_waic_scores(model_ensemble, dataloader,
-                                              results.pixel_anomaly_result.best_threshold, use_n_batches)
-        y_pred_proba.extend(waic_scores)
-        y_true.extend(len(waic_scores) * [1.0 if is_ood else 0.0])
 
-    fpr, tpr, threshs, au_roc = calculate_roc(y_true, y_pred_proba)
-    precision, recall, thresholds, au_prc = calculate_prc(y_true, y_pred_proba)
+    # First use val_dataloader
+    LOG.info(f'Inference on out-of-distribution data...')
+    waic_scores, lesional_list = sample_wise_waic_scores(model_ensemble, val_dataloader,
+                                                         results.pixel_anomaly_result.best_threshold, use_n_batches)
+    y_pred_proba_combo.extend(waic_scores)
+    y_true_combo.extend(len(waic_scores) * [1.0])
 
-    results.ood_detection_result.au_prc = au_prc
-    results.ood_detection_result.au_roc = au_roc
+    lesional_indices = [idx for idx, is_lesional in enumerate(lesional_list) if is_lesional]
+    normal_indices = [idx for idx, is_lesional in enumerate(lesional_list) if not is_lesional]
 
-    if eval_cfg.do_plots:
-        roc_fig = plot_roc_curve(fpr, tpr, au_roc,
-                                 title=f'ROC Curve OOD Detection', figsize=(6, 6))
-        roc_fig.savefig(results.plot_dir_path / f'ood_roc.png')
+    lesional_waic_scores = [waic_scores[idx] for idx in lesional_indices]
+    healthy_waic_scores = [waic_scores[idx] for idx in normal_indices]
 
-        prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
-                                              # calculated_threshold=results.pixel_anomaly_result.best_threshold,
-                                              # thresholds=threshs,
-                                              title=f'PR Curve OOD Detection', figsize=(6, 6))
-        prc_fig.savefig(results.plot_dir_path / 'ood_prc.png')
+    n_lesional_samples = len(lesional_waic_scores)
+    y_pred_proba_lesional.extend(lesional_waic_scores)
+    y_true_lesional.extend(n_lesional_samples * [1.0])
+
+    n_healthy_samples = len(healthy_waic_scores)
+    y_pred_proba_healthy.extend(healthy_waic_scores)
+    y_true_healthy.extend(n_healthy_samples * [1.0])
+
+    # Now use train_dataloader
+    LOG.info(f'Inference on in-distribution data...')
+    waic_scores, _ = sample_wise_waic_scores(model_ensemble, train_dataloader,
+                                             results.pixel_anomaly_result.best_threshold, use_n_batches)
+    y_pred_proba_combo.extend(waic_scores)
+    y_true_combo.extend(len(waic_scores) * [0.0])
+
+    # Train dataloader has no lesional samples, so fill up lesional and healthy ones from above with same amount
+    y_pred_proba_lesional.extend(random.sample(waic_scores, n_lesional_samples))
+    y_true_lesional.extend(n_lesional_samples * [0.0])
+
+    y_pred_proba_healthy.extend(random.sample(waic_scores, n_healthy_samples))
+    y_true_healthy.extend(n_healthy_samples * [0.0])
+
+    def do_ood_roc_prc_and_figs(mode: str, y_true, y_pred_proba) -> None:
+        if mode not in ['combo', 'lesional', 'healthy']:
+            raise ValueError(f'Given mode ({mode}) is not valid! Choose from combo, lesional, healthy.')
+        fpr, tpr, _, au_roc = calculate_roc(y_true, y_pred_proba)
+        precision, recall, _, au_prc = calculate_prc(y_true, y_pred_proba)
+
+        ood_result = OODDetectionResult()
+        ood_result.au_roc = au_roc
+        ood_result.au_prc = au_prc
+        ood_result.mode = mode
+        results.ood_detection_results.results.append(ood_result)
+
+        if eval_cfg.do_plots:
+            roc_fig = plot_roc_curve(fpr, tpr, au_roc,
+                                     title=f'ROC Curve OOD Detection {mode}', figsize=(6, 6))
+            roc_fig.savefig(results.plot_dir_path / f'ood_roc_{mode}.png')
+
+            prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
+                                                  # calculated_threshold=results.pixel_anomaly_result.best_threshold,
+                                                  # thresholds=threshs,
+                                                  title=f'PR Curve OOD Detection {mode}', figsize=(6, 6))
+            prc_fig.savefig(results.plot_dir_path / f'ood_prc_{mode}.png')
+
+    # Produce results for all cases
+    do_ood_roc_prc_and_figs('combo', y_true_combo, y_pred_proba_combo)
+    if len(y_true_healthy) > 0 and len(y_pred_proba_healthy) > 0:
+        do_ood_roc_prc_and_figs('healthy', y_true_healthy, y_pred_proba_healthy)
+    if len(y_true_lesional) > 0 and len(y_pred_proba_lesional) > 0:
+        do_ood_roc_prc_and_figs('lesional', y_true_lesional, y_pred_proba_lesional)
     return results
 
 
