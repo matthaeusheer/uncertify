@@ -21,7 +21,7 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
     """
     font = {'family': 'normal',
             'weight': 'bold',
-            'size': 12}
+            'size': 15}
     matplotlib.rc('font', **font)
     if 'figsize' in kwargs:
         fig = plt.figure(figsize=kwargs.get('figsize'))

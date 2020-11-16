@@ -39,6 +39,10 @@ class HDF5Dataset(Dataset):
     def __len__(self) -> int:
         return self.dataset_shape[0]
 
+    @property
+    def name(self) -> str:
+        return self._hdf5_file_path.name
+
 
 class Brats2017HDF5Dataset(HDF5Dataset):
     def __getitem__(self, idx) -> dict:
@@ -100,6 +104,10 @@ class MnistDatasetWrapper(Dataset):
     def __getitem__(self, idx) -> dict:
         return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
 
+    @property
+    def name(self) -> str:
+        return 'mnist'
+
 
 class GaussianNoiseDataset(Dataset):
     def __init__(self) -> None:
@@ -115,6 +123,10 @@ class GaussianNoiseDataset(Dataset):
 
     def _generate_sample(self) -> Tensor:
         return torch.randn(self._img_shape)
+
+    @property
+    def name(self) -> str:
+        return 'gaussian_noise'
 
 
 def train_val_split(dataset: HDF5Dataset, train_fraction: float) -> Tuple[HDF5Dataset, HDF5Dataset]:

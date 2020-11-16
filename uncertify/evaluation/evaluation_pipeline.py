@@ -1,7 +1,11 @@
 import logging
 from functools import partial
 import random
+from pathlib import Path
+import json
+from pprint import pprint
 
+import yaml
 import numpy as np
 import torch
 from torch import nn
@@ -22,8 +26,10 @@ from uncertify.visualization.threshold_search import plot_fpr_vs_residual_thresh
 from uncertify.visualization.model_performance import plot_segmentation_performance_vs_threshold
 from uncertify.visualization.model_performance import plot_confusion_matrix
 from uncertify.visualization.model_performance import plot_roc_curve, plot_precision_recall_curve
+from uncertify.visualization.model_performance import plot_multi_roc_curves, plot_multi_prc_curves
 from uncertify.visualization.histograms import plot_loss_histograms
-from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnomalyDetectionResults, OODDetectionResult
+from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnomalyDetectionResults
+from uncertify.evaluation.configs import OODDetectionResult, OODDetectionResults
 from uncertify.common import DATA_DIR_PATH
 
 from typing import Tuple, Iterable, List
@@ -45,8 +51,9 @@ def run_evaluation_pipeline(model: nn.Module,
                             ensemble_models: Iterable[nn.Module] = None) -> EvaluationResult:
     """Main function which runs the complete evaluation pipeline for a trained model and a test dataset."""
     results = EvaluationResult(OUT_DIR_PATH, PixelAnomalyDetectionResult(),
-                               SliceAnomalyDetectionResults(), OODDetectionResult())
+                               SliceAnomalyDetectionResults(), OODDetectionResults())
     results.make_dirs()
+    results.test_set_name = val_dataloader.dataset.name
     LOG.info(f'Evaluation run output: {results.out_dir_path / results.run_dir_name}')
 
     with torch.no_grad():
@@ -69,7 +76,7 @@ def run_evaluation_pipeline(model: nn.Module,
             results = run_ood_detection_performance(ensemble_models, train_dataloader, val_dataloader, eval_cfg,
                                                     results)
 
-        # results.to_json()
+        results.to_json()
         return results
 
 
@@ -109,7 +116,7 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
 
 def run_segmentation_performance(eval_cfg: EvaluationConfig, results: EvaluationResult,
                                  val_dataloader: DataLoader, model: nn.Module) -> EvaluationResult:
-    perf_cfg = eval_cfg.performance_config
+    perf_cfg = eval_cfg.seg_performance_config
     LOG.info(f'Running segmentation performance '
              f'(residual threshold = {results.pixel_anomaly_result.best_threshold})...')
 
@@ -260,8 +267,10 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
     LOG.info('Running OOD detection performance...')
-    y_pred_proba_combo = []  # These are the e.g. WAIC scores for both in- and OOD data!
-    y_true_combo = []
+    results.test_set_name = val_dataloader.dataset.name
+
+    y_pred_proba_all = []  # These are the e.g. WAIC scores for both in- and OOD data!
+    y_true_all = []
     y_pred_proba_lesional = []
     y_true_lesional = []
     y_pred_proba_healthy = []
@@ -274,8 +283,8 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
     LOG.info(f'Inference on out-of-distribution data...')
     waic_scores, lesional_list = sample_wise_waic_scores(model_ensemble, val_dataloader,
                                                          results.pixel_anomaly_result.best_threshold, use_n_batches)
-    y_pred_proba_combo.extend(waic_scores)
-    y_true_combo.extend(len(waic_scores) * [1.0])
+    y_pred_proba_all.extend(waic_scores)
+    y_true_all.extend(len(waic_scores) * [1.0])
 
     lesional_indices = [idx for idx, is_lesional in enumerate(lesional_list) if is_lesional]
     normal_indices = [idx for idx, is_lesional in enumerate(lesional_list) if not is_lesional]
@@ -295,8 +304,8 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
     LOG.info(f'Inference on in-distribution data...')
     waic_scores, _ = sample_wise_waic_scores(model_ensemble, train_dataloader,
                                              results.pixel_anomaly_result.best_threshold, use_n_batches)
-    y_pred_proba_combo.extend(waic_scores)
-    y_true_combo.extend(len(waic_scores) * [0.0])
+    y_pred_proba_all.extend(waic_scores)
+    y_true_all.extend(len(waic_scores) * [0.0])
 
     # Train dataloader has no lesional samples, so fill up lesional and healthy ones from above with same amount
     y_pred_proba_lesional.extend(random.sample(waic_scores, n_lesional_samples))
@@ -305,35 +314,47 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
     y_pred_proba_healthy.extend(random.sample(waic_scores, n_healthy_samples))
     y_true_healthy.extend(n_healthy_samples * [0.0])
 
-    def do_ood_roc_prc_and_figs(mode: str, y_true, y_pred_proba) -> None:
-        if mode not in ['combo', 'lesional', 'healthy']:
-            raise ValueError(f'Given mode ({mode}) is not valid! Choose from combo, lesional, healthy.')
+    def calculate_ood_performance(mode: str, y_true: list, y_pred_proba: list) -> dict:
+        if mode not in ['all', 'lesional', 'healthy']:
+            raise ValueError(f'Given mode ({mode}) is not valid! Choose from all, lesional, healthy.')
         fpr, tpr, _, au_roc = calculate_roc(y_true, y_pred_proba)
         precision, recall, _, au_prc = calculate_prc(y_true, y_pred_proba)
+        out_dict = {'tpr': tpr, 'fpr': fpr, 'au_roc': au_roc,
+                    'precision': precision, 'recall': recall, 'au_prc': au_prc}
+        return out_dict
 
+    def update_results(ood_scores: dict, mode_: str) -> None:
         ood_result = OODDetectionResult()
-        ood_result.au_roc = au_roc
-        ood_result.au_prc = au_prc
-        ood_result.mode = mode
+        ood_result.au_roc = ood_scores['au_roc']
+        ood_result.au_prc = ood_scores['au_prc']
+        ood_result.mode = mode_
         results.ood_detection_results.results.append(ood_result)
 
-        if eval_cfg.do_plots:
-            roc_fig = plot_roc_curve(fpr, tpr, au_roc,
-                                     title=f'ROC Curve OOD Detection {mode}', figsize=(6, 6))
-            roc_fig.savefig(results.plot_dir_path / f'ood_roc_{mode}.png')
+    # Will be filled for each mode ('all', 'healthy', 'lesional') with
+    metrics_dict = {}
+    for mode, y_true, y_pred_proba in zip(['all', 'healthy', 'lesional'],
+                                          [y_true_all, y_true_healthy, y_true_lesional],
+                                          [y_pred_proba_all, y_pred_proba_healthy, y_pred_proba_lesional]):
+        if mode in ['healthy', 'lesional'] and not sum(lesional_list) > 0:
+            continue
+        scores = calculate_ood_performance(mode, y_true, y_pred_proba)
+        update_results(scores, mode)
+        metrics_dict[mode] = scores
 
-            prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
-                                                  # calculated_threshold=results.pixel_anomaly_result.best_threshold,
-                                                  # thresholds=threshs,
-                                                  title=f'PR Curve OOD Detection {mode}', figsize=(6, 6))
-            prc_fig.savefig(results.plot_dir_path / f'ood_prc_{mode}.png')
-
-    # Produce results for all cases
-    do_ood_roc_prc_and_figs('combo', y_true_combo, y_pred_proba_combo)
-    if len(y_true_healthy) > 0 and len(y_pred_proba_healthy) > 0:
-        do_ood_roc_prc_and_figs('healthy', y_true_healthy, y_pred_proba_healthy)
-    if len(y_true_lesional) > 0 and len(y_pred_proba_lesional) > 0:
-        do_ood_roc_prc_and_figs('lesional', y_true_lesional, y_pred_proba_lesional)
+    if eval_cfg.do_plots:
+        labels = list(metrics_dict.keys())
+        fprs = [score_dict['fpr'] for score_dict in metrics_dict.values()]
+        tprs = [score_dict['tpr'] for score_dict in metrics_dict.values()]
+        au_rocs = [score_dict['au_roc'] for score_dict in metrics_dict.values()]
+        recalls = [score_dict['recall'] for score_dict in metrics_dict.values()]
+        precisions = [score_dict['precision'] for score_dict in metrics_dict.values()]
+        au_prcs = [score_dict['au_prc'] for score_dict in metrics_dict.values()]
+        roc_fig = plot_multi_roc_curves(fprs, tprs, au_rocs, labels,
+                                        title=f'ROC Curve OOD Detection', figsize=(6, 6))
+        prc_fig = plot_multi_prc_curves(recalls, precisions, au_prcs, labels,
+                                        title=f'PR Curve OOD Detection', figsize=(6, 6))
+        roc_fig.savefig(results.plot_dir_path / f'ood_roc.png')
+        prc_fig.savefig(results.plot_dir_path / f'ood_prc.png')
     return results
 
 
@@ -346,4 +367,23 @@ def print_results(results: EvaluationResult) -> None:
     print(results.slice_anomaly_results)
     # OOD detection
     print('OOD Detection')
-    print(results.ood_detection_result)
+    print(results.ood_detection_results)
+
+
+def print_results_from_evaluation_dirs(work_dir_path: Path, run_numbers: list, print_results_only: bool = False) -> None:
+    """Print the aggregated results from multiple evaluation runs."""
+    def float_representer(dumper, value):
+        text = '{0:.4f}'.format(value)
+        return dumper.represent_scalar(u'tag:yaml.org,2002:float', text)
+
+    yaml.add_representer(float, float_representer)
+
+    for run_number in run_numbers:
+        eval_dir_path = work_dir_path / f'evaluation_{run_number}'
+        eval_file_name = f'evaluation_results_{run_number}.json'
+        print(f'--- Evaluation summary run {run_number} ---')
+        with open(eval_dir_path / eval_file_name, 'r') as infile:
+            results = json.load(infile)
+            if print_results_only:
+                results = {key: val for key, val in results.items() if 'result' in key}
+            print(yaml.dump(results))

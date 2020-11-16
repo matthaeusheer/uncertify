@@ -15,9 +15,9 @@ from torch.optim.optimizer import Optimizer
 import torch.distributions as dist
 
 from uncertify.models.gradient import Gradient
-from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing
+from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing, decay_annealing
 from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
-    CyclicBetaConfig, SigmoidBetaConfig
+    CyclicBetaConfig, SigmoidBetaConfig, DecayBetaConfig
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.utils.sampling import random_uniform_ring
 from uncertify.evaluation.utils import residual_l1_max
@@ -178,6 +178,8 @@ class VariationalAutoEncoder(pl.LightningModule):
             return cyclical_annealing(train_step, **dataclasses.asdict(self._beta_config))
         elif isinstance(self._beta_config, SigmoidBetaConfig):
             return sigmoid_annealing(train_step, **dataclasses.asdict(self._beta_config))
+        elif isinstance(self._beta_config, DecayBetaConfig):
+            return decay_annealing(train_step, **dataclasses.asdict(self._beta_config))
         else:
             raise RuntimeError(f'Beta config not supported.')
 

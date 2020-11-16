@@ -189,6 +189,43 @@ class BaurDecoder(nn.Module):
         return tensor
 
 
+class SmallBaurDecoder(BaurDecoder):
+    @staticmethod
+    def define_conv_layers() -> nn.Sequential:
+        dropout_rate = None
+        conv1 = Conv2DBlock(in_channels=16,
+                            out_channels=64,
+                            conv_further_kwargs={'kernel_size': 1, 'stride': 1},
+                            dropout_rate=dropout_rate)
+        conv2 = ConvTranspose2DBlock(in_channels=64,
+                                     out_channels=32,
+                                     conv_further_kwargs={'kernel_size': 5, 'stride': 2,
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
+        conv3 = ConvTranspose2DBlock(in_channels=32,
+                                     out_channels=16,
+                                     conv_further_kwargs={'kernel_size': 5, 'stride': 2,
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
+        conv4 = ConvTranspose2DBlock(in_channels=16,
+                                     out_channels=8,
+                                     conv_further_kwargs={'kernel_size': 5, 'stride': 2,
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
+        conv5 = ConvTranspose2DBlock(in_channels=8,
+                                     out_channels=4,
+                                     conv_further_kwargs={'kernel_size': 5, 'stride': 2,
+                                                          'padding': 2, 'output_padding': 1},
+                                     dropout_rate=dropout_rate)
+        conv6 = Conv2DBlock(in_channels=4,
+                            out_channels=1,
+                            conv_further_kwargs={'kernel_size': 1, 'stride': 1},
+                            normalization_module=None,
+                            activation_module=None,
+                            dropout_rate=dropout_rate)
+        return nn.Sequential(*[conv1, conv2, conv3, conv4, conv5, conv6])
+
+
 def print_feature_map_sizes_baur() -> None:
     """Print the feature map sizes of Baur Encoder and Decoder."""
     # Encoder
