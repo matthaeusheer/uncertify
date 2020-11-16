@@ -5,7 +5,7 @@ import seaborn as sns
 
 from uncertify.visualization.plotting import setup_plt_figure
 
-from typing import Iterable
+from typing import Iterable, List, Union, Tuple
 
 LOG = logging.getLogger(__name__)
 
@@ -39,7 +39,44 @@ def plot_segmentation_performance_vs_threshold(thresholds: Iterable[float],
     return fig
 
 
-def plot_roc_curve(fpr: Iterable, tpr: Iterable, auc: float,
+def setup_roc_prc_fig(mode: str, **kwargs) -> Tuple[plt.Figure, plt.Axes]:
+    """Sets up a bare figure for either ROC or PRC curves to plot on curves later on."""
+    if mode not in ['roc', 'prc']:
+        raise ValueError('Choose either "roc" or "prc" for figure setup!')
+
+    x_labels = {'roc': 'False Positive Rate', 'prc': 'Recall (TPR)'}
+    y_labels = {'roc': 'True Positive Rate', 'prc': 'Precision'}
+
+    fig, ax = setup_plt_figure(xlabel=x_labels[mode], ylabel=y_labels[mode], **kwargs)
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+
+    if mode == 'roc':
+        ax.plot([0, 1], [0, 1], linewidth=1, linestyle='--', color='gray')
+    return fig, ax
+
+
+def plot_multi_roc_curves(fprs: List[list], tprs: List[list], aucs: List[float],
+                          labels: List[str], **kwargs) -> plt.Figure:
+    """Plot multiple ROC curves in one figure."""
+    fig, ax = setup_roc_prc_fig(mode='roc', **kwargs)
+    for fpr, tpr, auc, label in zip(fprs, tprs, aucs, labels):
+        ax.plot(fpr, tpr, linewidth=3, alpha=0.7, label=f'{label:10} {auc:.2f}')
+    ax.legend(title='A.u. ROC Curve')
+    return fig
+
+
+def plot_multi_prc_curves(recalls: List[list], precisions: List[list], auprcs: List[float],
+                          labels: List[str], **kwargs) -> plt.Figure:
+    """Plot multiple PRC curves in one figure."""
+    fig, ax = setup_roc_prc_fig(mode='prc', **kwargs)
+    for recall, precision, auprc, label in zip(recalls, precisions, auprcs, labels):
+        ax.plot(recall, precision, linewidth=3, alpha=0.7, label=f'{label:10} {auprc:.2f}')
+    ax.legend(title='A.u. PR Curve')
+    return fig
+
+
+def plot_roc_curve(fpr: Union[list, List[list]], tpr: Union[list, List[list]], auc: float,
                    calculated_threshold: float = None, thresholds: Iterable = None, **kwargs) -> plt.Figure:
     """Plots the ROC curve."""
     fig, ax = setup_plt_figure(xlabel='False Positive Rate', ylabel='True Positive Rate', **kwargs)
@@ -48,7 +85,7 @@ def plot_roc_curve(fpr: Iterable, tpr: Iterable, auc: float,
 
     if calculated_threshold is not None:
         if thresholds is None:
-            LOG.warning(f'plot_roc_curve: Cannot plot pont on ROC curve for calculated threshold since '
+            LOG.warning(f'plot_roc_curve: Cannot plot point on ROC curve for calculated threshold since '
                         f'thresholds list is not given.')
         else:
             idx = min(range(len(thresholds)), key=lambda i: abs(thresholds[i] - calculated_threshold))

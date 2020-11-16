@@ -11,7 +11,7 @@ from torchvision.transforms.transforms import Compose
 import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.simple_vae import SimpleVariationalAutoEncoder
-from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
+from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder, SmallBaurDecoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
 from uncertify.log import setup_logging
@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
         '--annealing',
         type=str,
         default='monotonic',
-        choices=['constant', 'monotonic', 'cyclic', 'sigmoid'],
+        choices=['constant', 'monotonic', 'cyclic', 'sigmoid', 'decay'],
         help='Which beta annealing strategy to choose.'
     )
     parser.add_argument(
@@ -115,12 +115,17 @@ def parse_args() -> argparse.Namespace:
         default=DATA_DIR_PATH,
         help='Output directory, logs (tensorboard, models, ...) will be stored here in a lightning_logs folder.'
     )
+    parser.add_argument(
+        '--log-dir-name',
+        default=Path(__file__).stem,
+        help='The folder name within the "lightning_logs" directory in which to store the runs.'
+    )
     return parser.parse_args()
 
 
 def main(args: argparse.Namespace) -> None:
     LOG.info(f'Argparse args: {args.__dict__}')
-    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=Path(__file__).stem)
+    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
@@ -129,15 +134,8 @@ def main(args: argparse.Namespace) -> None:
                       #'limit_train_batches': 0.1,
                       #'limit_val_batches': 0.1,
                       'max_epochs': 40,
-                      'profiler': True,
+                      'profiler': False,
                       'fast_dev_run': False}
-    early_stop_callback = EarlyStopping(
-        monitor='avg_val_mean_total_loss',
-        min_delta=0.001,
-        patience=5,
-        verbose=False,
-        mode='min'
-    )
     checkpoint_callback = ModelCheckpoint(
         save_last=True,
         verbose=True,
@@ -172,6 +170,7 @@ def main(args: argparse.Namespace) -> None:
                                                           num_workers=args.num_workers)
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
+    print(beta_config)
     ood_dataloaders = []
     for hdf5_set_path in args.ood_set_paths:
         name = hdf5_set_path.name
@@ -211,7 +210,7 @@ def main(args: argparse.Namespace) -> None:
 
     if args.model == 'vae':
         n_m_factor = 1.0  # len(train_dataloader.dataset) / train_dataloader.batch_size
-        model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
+        model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=SmallBaurDecoder(),
                                        beta_config=beta_config,
                                        n_m_factor=n_m_factor,
                                        ood_dataloaders=ood_dataloaders)
