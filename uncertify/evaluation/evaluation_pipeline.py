@@ -281,8 +281,8 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
 
     # First use val_dataloader
     LOG.info(f'Inference on out-of-distribution data...')
-    waic_scores, lesional_list = sample_wise_waic_scores(model_ensemble, val_dataloader,
-                                                         results.pixel_anomaly_result.best_threshold, use_n_batches)
+    waic_scores, lesional_list, _ = sample_wise_waic_scores(model_ensemble, val_dataloader,
+                                                            results.pixel_anomaly_result.best_threshold, use_n_batches)
     y_pred_proba_all.extend(waic_scores)
     y_true_all.extend(len(waic_scores) * [1.0])
 
@@ -302,8 +302,8 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
 
     # Now use train_dataloader
     LOG.info(f'Inference on in-distribution data...')
-    waic_scores, _ = sample_wise_waic_scores(model_ensemble, train_dataloader,
-                                             results.pixel_anomaly_result.best_threshold, use_n_batches)
+    waic_scores, _, _ = sample_wise_waic_scores(model_ensemble, train_dataloader,
+                                                results.pixel_anomaly_result.best_threshold, use_n_batches)
     y_pred_proba_all.extend(waic_scores)
     y_true_all.extend(len(waic_scores) * [0.0])
 
@@ -370,8 +370,10 @@ def print_results(results: EvaluationResult) -> None:
     print(results.ood_detection_results)
 
 
-def print_results_from_evaluation_dirs(work_dir_path: Path, run_numbers: list, print_results_only: bool = False) -> None:
+def print_results_from_evaluation_dirs(work_dir_path: Path, run_numbers: list,
+                                       print_results_only: bool = False) -> None:
     """Print the aggregated results from multiple evaluation runs."""
+
     def float_representer(dumper, value):
         text = '{0:.4f}'.format(value)
         return dumper.represent_scalar(u'tag:yaml.org,2002:float', text)
