@@ -134,6 +134,8 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
+        # TODO: Mask for each slice input
+
         # p(x|z)
         if self._loss_type == 'l2':
             rec_dist = dist.Normal(reconstruction, 1.0)  # TODO: The std parameter could be varied (tuned)!
@@ -142,6 +144,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         else:
             raise ValueError(f'Loss type "{self._loss_type}" not supported.')
         log_p_x_z = rec_dist.log_prob(observation)
+        # TODO: Multiply output with mask and then take L1 / L2 distance
+        #       here sum instead of mean and then divide by amount of nonzero elements in the mask
         log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each slice
 
         # p(z)
