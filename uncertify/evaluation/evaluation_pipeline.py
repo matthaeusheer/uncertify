@@ -3,7 +3,6 @@ from functools import partial
 import random
 from pathlib import Path
 import json
-from pprint import pprint
 
 import yaml
 import numpy as np
@@ -32,7 +31,7 @@ from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnoma
 from uncertify.evaluation.configs import OODDetectionResult, OODDetectionResults
 from uncertify.common import DATA_DIR_PATH
 
-from typing import Tuple, Iterable, List
+from typing import Tuple, Iterable
 
 LOG = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ def run_evaluation_pipeline(model: nn.Module,
                             run_ood_detection: bool = True,
                             ensemble_models: Iterable[nn.Module] = None) -> EvaluationResult:
     """Main function which runs the complete evaluation pipeline for a trained model and a test dataset."""
-    results = EvaluationResult(OUT_DIR_PATH, PixelAnomalyDetectionResult(),
+    results = EvaluationResult(OUT_DIR_PATH, eval_cfg, PixelAnomalyDetectionResult(),
                                SliceAnomalyDetectionResults(), OODDetectionResults())
     results.make_dirs()
     results.test_set_name = val_dataloader.dataset.name
