@@ -57,10 +57,9 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
         for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
                                                                   progress_bar_suffix=f'WAIC (ensemble {model_idx})')):
             # Used to exclude slices which have an empty mask, i.e. no actual scan
-            slice_wise_is_empty = torch.sum(batch.mask == True, axis=(1, 2, 3)).numpy() == 0
             per_slice_log_likelihoods = -batch.kl_div + batch.rec_err
             for slice_idx, log_likelihood in enumerate(per_slice_log_likelihoods):
-                if not slice_wise_is_empty[slice_idx]:
+                if not batch.slice_wise_is_empty[slice_idx]:
                     slice_wise_log_likelihoods[global_slice_idx].append(log_likelihood)
                     if model_idx == 0:
                         if batch.segmentation is not None:
