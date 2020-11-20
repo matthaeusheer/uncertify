@@ -3,6 +3,7 @@ import itertools
 from dataclasses import dataclass, field
 from enum import Enum
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -20,19 +21,23 @@ ABNORMAL_PIXEL_COUNT = 20  # Mark sample as abnormal when it has more than that 
 @dataclass
 class BatchInferenceResult:
     """The raw per-batch result we can infer from running a single batch through the network including thresholding."""
+    # Image-like torch tensors
     scan: Tensor = None
     mask: Tensor = None
     segmentation: Tensor = None
     reconstruction: Tensor = None
     residual: Tensor = None
     residuals_thresholded: Tensor = None
+    # Numpy arrays or single values
     residual_threshold: float = None
+    slice_wise_is_empty: List[bool] = None
+    slice_wise_is_lesional: np.ndarray = None
     total_loss: float = None
     mean_kld_div: float = None
     mean_rec_err: float = None
-    kl_div: Tensor = None
-    rec_err: Tensor = None
-    latent_code: Tensor = None
+    kl_div: np.ndarray = None
+    rec_err: np.ndarray = None
+    latent_code: np.ndarray = None
 
 
 @dataclass
@@ -60,6 +65,9 @@ class AnomalyInferenceScores:
     """Container for pixel-wise and slice-wise anomaly detection predictions."""
     pixel_wise: AnomalyScores = field(default_factory=list)
     slice_wise: Dict[str, SliceWiseAnomalyScores] = field(default_factory=dict)
+
+
+N_PIXEL_LESIONAL_THRESHOLD = 20
 
 
 def yield_inference_batches(data_loader: DataLoader,
@@ -93,7 +101,7 @@ def yield_inference_batches(data_loader: DataLoader,
         # Run actual inference for batch
         trained_model.eval()
         with torch.no_grad():
-            inference_result = trained_model(scan_batch)
+            inference_result = trained_model(scan_batch, batch['mask'])
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
         # Do residual calculation
@@ -111,9 +119,12 @@ def yield_inference_batches(data_loader: DataLoader,
 
         if 'seg' in batch.keys():
             result.segmentation = convert_segmentation_to_one_zero(batch['seg'])
+            result.slice_wise_is_lesional = (torch.sum(result.segmentation, axis=(1, 2, 3)) >
+                                             N_PIXEL_LESIONAL_THRESHOLD).numpy()
 
         if 'mask' in batch.keys():
             result.mask = batch['mask']
+            result.slice_wise_is_empty = torch.sum(result.mask, axis=(1, 2, 3)).numpy() == 0
 
         for key, value in zip(['total_loss', 'mean_kld_div', 'mean_rec_err', 'kl_div', 'rec_err'],
                               [total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err]):

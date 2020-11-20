@@ -47,20 +47,22 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._gradient_net = Gradient()
         self._train_step_counter = 0
         self._beta_config = beta_config
-        self.save_hyperparameters('decoder', 'encoder')
+        # self.save_hyperparameters('decoder', 'encoder')
         self._n_m_factor = n_m_factor
         self._ood_dataloaders = ood_dataloaders
         self._loss_type = loss_type
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor,
+                                                        Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
         Args:
             x: raw image tensor (un-flattened)
+            mask: the brain mask
         """
         mu, log_var = self._encoder(x)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, x, mu, log_var)
+        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, x, mask, mu, log_var)
         return reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code
 
     @staticmethod
@@ -72,9 +74,11 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
+        mask = batch['mask']
 
         # Run batch through model and get losses
-        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
+                                                                                                           mask)
 
         # Log training losses to Tensorboard
         train_loss_terms = {'train_reconstruction_error': mean_rec_err,
@@ -90,9 +94,11 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
+        mask = batch['mask']
 
         # Run validation batch through model and get losses
-        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features)
+        rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
+                                                                                                           mask)
 
         # Those values will be tracked and can be accessed in validation_epoch_end
         val_return_dict = {'val_total_loss': total_loss,
@@ -132,21 +138,20 @@ class VariationalAutoEncoder(pl.LightningModule):
         loss_terms.update({'avg_val_mean_total_loss': avg_val_total_losses.mean()})
         return loss_terms
 
-    def loss_function(self, reconstruction: Tensor, observation: Tensor, mu: Tensor, log_var: Tensor,
+    def loss_function(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
-        # TODO: Mask for each slice input
-
+        mask = torch.ones_like(reconstruction) if mask is None else mask
         # p(x|z)
         if self._loss_type == 'l2':
-            rec_dist = dist.Normal(reconstruction, 1.0)  # TODO: The std parameter could be varied (tuned)!
+            p_x_z = dist.Normal(reconstruction * mask, 1.0)
         elif self._loss_type == 'l1':
-            rec_dist = dist.Laplace(reconstruction, 1.0)
+            p_x_z = dist.Laplace(reconstruction * mask, 1.0)
         else:
             raise ValueError(f'Loss type "{self._loss_type}" not supported.')
-        log_p_x_z = rec_dist.log_prob(observation)
-        # TODO: Multiply output with mask and then take L1 / L2 distance
-        #       here sum instead of mean and then divide by amount of nonzero elements in the mask
-        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # log likelihood for each slice
+
+        slice_wise_not_empty_pixels = torch.sum(mask, dim=(1, 2, 3))
+        log_p_x_z = p_x_z.log_prob(observation * mask)
+        log_p_x_z = torch.sum(log_p_x_z, dim=(1, 2, 3)) / slice_wise_not_empty_pixels  # log likelihood for each slice
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
@@ -165,7 +170,11 @@ class VariationalAutoEncoder(pl.LightningModule):
 
         variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
         total_loss = -variational_lower_bound
-
+        print()
+        print(mean_kl_div)
+        print(mean_log_p_x_z)
+        print(total_loss)
+        print('---')
         return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
 
     def configure_optimizers(self) -> Optimizer:
@@ -207,7 +216,9 @@ class VariationalAutoEncoder(pl.LightningModule):
         n_batches = 2
         for batch in islice(dataloader, n_batches):
             in_batch = batch['scan'].cuda()
-            rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(in_batch)
+            mask = batch['mask'].cuda() if 'mask' in batch.keys() else None
+            rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(in_batch,
+                                                                                                               mask)
             residuals, grad_residuals = self._get_residuals_and_gradient(in_batch, rec_batch)
             grid = self._create_in_rec_res_grad_grid(in_batch, rec_batch, residuals, grad_residuals)
             self.logger.experiment.add_image(f'OOD_{set_name}', grid, global_step=self._train_step_counter)
