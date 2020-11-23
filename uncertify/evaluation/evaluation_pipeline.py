@@ -278,6 +278,8 @@ def run_ood_detection_performance(model_ensemble: Iterable[nn.Module], train_dat
     min_length_dataloader = min(len(train_dataloader), len(val_dataloader))
     use_n_batches = min(eval_cfg.use_n_batches, min_length_dataloader)
 
+    # TODO: Extent this to work with all kinds of OOD scores (e.g. DoSE score!)
+
     # First use val_dataloader
     LOG.info(f'Inference on out-of-distribution data...')
     waic_scores, lesional_list, _ = sample_wise_waic_scores(model_ensemble, val_dataloader,
