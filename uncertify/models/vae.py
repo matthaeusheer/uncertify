@@ -7,6 +7,7 @@ from itertools import islice
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch import nn
 import torchvision
@@ -140,18 +141,16 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
-        mask = torch.ones_like(reconstruction) if mask is None else mask
         # p(x|z)
         if self._loss_type == 'l2':
-            p_x_z = dist.Normal(reconstruction * mask, 1.0)
+            p_x_z = dist.Normal(reconstruction, 1.0)
         elif self._loss_type == 'l1':
-            p_x_z = dist.Laplace(reconstruction * mask, 1.0)
+            p_x_z = dist.Laplace(reconstruction, 1.0)
         else:
             raise ValueError(f'Loss type "{self._loss_type}" not supported.')
 
-        slice_wise_not_empty_pixels = torch.sum(mask, dim=(1, 2, 3))
-        log_p_x_z = p_x_z.log_prob(observation * mask)
-        log_p_x_z = torch.sum(log_p_x_z, dim=(1, 2, 3)) / slice_wise_not_empty_pixels  # log likelihood for each slice
+        log_p_x_z = p_x_z.log_prob(observation)
+        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
@@ -170,11 +169,52 @@ class VariationalAutoEncoder(pl.LightningModule):
 
         variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
         total_loss = -variational_lower_bound
-        print()
-        print(mean_kl_div)
-        print(mean_log_p_x_z)
-        print(total_loss)
-        print('---')
+
+        return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
+
+    def loss_function_new(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
+                      beta: float = 1.0, train_step: int = None):
+        mask = torch.ones_like(reconstruction) if mask is None else mask
+        # p(x|z)
+        if self._loss_type == 'l2':
+            p_x_z = dist.Normal(reconstruction * mask, 1.0)
+        elif self._loss_type == 'l1':
+            p_x_z = dist.Laplace(reconstruction * mask, 1.0)
+        else:
+            raise ValueError(f'Loss type "{self._loss_type}" not supported.')
+
+        slice_wise_not_empty_pixels = torch.sum(mask, dim=(1, 2, 3))
+        log_p_x_z = p_x_z.log_prob(observation * mask)
+
+        # rec_loss_func = nn.L1Loss(reduction='none')
+        # l1_loss = rec_loss_func(observation * mask, reconstruction * mask)
+        # slice_wise_l1_loss = torch.sum(l1_loss, dim=(1, 2, 3))
+        # slice_wise_l1_loss = slice_wise_l1_loss / slice_wise_not_empty_pixels
+        # log_p_x_z = slice_wise_l1_loss
+        # log_p_x_z = torch.sum(log_p_x_z, dim=(1, 2, 3)) / slice_wise_not_empty_pixels  # log likelihood for each slice
+
+        # p(z)
+        z_prior = dist.Normal(0.0, 1.0)
+
+        # q(z|x)
+        z_post = dist.Normal(mu, torch.sqrt(torch.exp(log_var)))
+
+        # KL(q(z|x), p(z))
+        kl_div = dist.kl_divergence(z_post, z_prior)
+        kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
+        kl_div = self._calculate_beta(self._train_step_counter) * kl_div
+
+        # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise
+        mean_kl_div = torch.mean(kl_div)
+        mean_log_p_x_z = torch.mean(log_p_x_z)
+
+        variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
+        total_loss = -variational_lower_bound
+        # print()
+        # print(mean_kl_div)
+        # print(mean_log_p_x_z)
+        # print(total_loss)
+        # print('---')
         return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
 
     def configure_optimizers(self) -> Optimizer:
