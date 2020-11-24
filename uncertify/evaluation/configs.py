@@ -37,10 +37,17 @@ class PerformanceEvaluationConfig:
 
 
 @dataclass
+class OodEvaluationConfig:
+    metrics: tuple = ('dose', )  # 'waic'
+    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo')
+
+
+@dataclass
 class EvaluationConfig:
     """A data class which holds configurations and hyper-parameters necessary for an evaluation pipeline run."""
     thresh_search_config: PixelThresholdSearchConfig = PixelThresholdSearchConfig()
     seg_performance_config: PerformanceEvaluationConfig = PerformanceEvaluationConfig()
+    ood_config: OodEvaluationConfig = OodEvaluationConfig()
     use_n_batches: int = None  # Handy for faster evaluation or debugging
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
@@ -75,6 +82,7 @@ class PixelAnomalyDetectionResult(AnomalyDetectionResult):
 @dataclass
 class OODDetectionResult(AnomalyDetectionResult):
     mode: str = None  # can be 'combo', 'lesional', 'healthy'
+    metric: str = None  # e.g. WAIC or DoSE
 
 
 @dataclass

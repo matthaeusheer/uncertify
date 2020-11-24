@@ -1,5 +1,5 @@
+from collections import defaultdict
 from pathlib import Path
-from typing import List
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -9,12 +9,16 @@ from uncertify.evaluation.configs import EvaluationConfig, EvaluationResult, Pix
     SliceAnomalyDetectionResults, OODDetectionResults
 from uncertify.evaluation.evaluation_pipeline import run_ood_detection_performance, print_results_from_evaluation_dirs
 from uncertify.evaluation.ood_metrics import LOG, sample_wise_waic_scores
+from uncertify.evaluation.dose import full_pipeline_slice_wise_dose_scores
+from uncertify.evaluation.statistics import aggregate_slice_wise_statistics, fit_statistics
+
+from typing import Tuple, List
 
 
 def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ensemble_models: List[nn.Module],
                         residual_threshold: float = None, max_n_batches: int = None,
                         eval_results_dir: Path = DATA_DIR_PATH / 'evaluation',
-                        print_results_when_done: bool = True, ) -> None:
+                        print_results_when_done: bool = True) -> None:
     """Run OOD evaluation pipeline for multiple dataloaders amd store output in evaluation output directory.
 
     Arguments
@@ -43,41 +47,65 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ens
         print_results_from_evaluation_dirs(eval_results_dir, run_numbers, print_results_only=True)
 
 
-def run_ood_to_ood_dict(dataloader_dict: dict, ensemble_models: list, num_batches: int = None) -> dict:
+def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train_dataloader: DataLoader = None,
+                        num_batches: int = None, ood_metrics: Tuple[str] = ('waic', 'dose'),
+                        dose_statistics: Tuple[str] = None) -> dict:
     """Run OOD detection and organise output such that healthy vs. lesional analysis can be performed.
 
-    # TODO: Define an interface for functions that return slice-wise ood scores and take the function as
-            an input parameter s.t. this works for different OOD metrics.
     Returns
-        ood_dict: one sub-dict for every dataloader where the name is the key and for the sub-dicts the
+        ood_dict: top-level keys are ood metrics, then we have a dict with
+                  one sub-dict for every dataloader where the name is the key and for the sub-dicts the
                   keys are ['all', 'healthy', 'lesional', 'healthy_scans', 'lesional_scans' where the values for the
                   scans keys are slice-wise pytorch tensors and the rest are actual OOD scores in a list either
                   all of them, only the healthy ones or only lesional ones
     """
-    ood_dict = {}
-    for name, data_loader in dataloader_dict.items():
-        LOG.info(f'WAIC score calculation for {name} ({num_batches * data_loader.batch_size} slices)...')
-        slice_wise_waic_scores, slice_wise_is_lesional, scans = sample_wise_waic_scores(models=ensemble_models,
-                                                                                        data_loader=data_loader,
-                                                                                        max_n_batches=num_batches,
-                                                                                        return_slices=True)
-        # Organise as healthy / unhealthy
-        healthy_scores = []
-        lesional_scores = []
-        healthy_scans = []
-        lesional_scans = []
-        for idx in range(len(slice_wise_waic_scores)):
-            is_lesional_slice = slice_wise_is_lesional[idx]
-            if is_lesional_slice:
-                lesional_scores.append(slice_wise_waic_scores[idx])
-                if scans is not None:
-                    lesional_scans.append(scans[idx])
-            else:
-                healthy_scores.append(slice_wise_waic_scores[idx])
-                if scans is not None:
-                    healthy_scans.append(scans[idx])
+    # Fit training distribution beforehand, if dose is requested
+    kde_func_dict = None
+    if 'dose' in ood_metrics:
+        assert dose_statistics is not None, f'Need to provide DoSE statistics.'
+        model = ensemble_models[0]
+        statistics_dict = aggregate_slice_wise_statistics(model, train_dataloader, dose_statistics,
+                                                          max_n_batches=num_batches)
+        kde_func_dict = fit_statistics(statistics_dict)
 
-        dataset_ood_dict = {'all': slice_wise_waic_scores, 'healthy': healthy_scores, 'lesional': lesional_scores,
-                            'healthy_scans': healthy_scans, 'lesional_scans': lesional_scans}
-        ood_dict[name] = dataset_ood_dict
-    return ood_dict
+    metrics_ood_dict = defaultdict(dict)
+    for metric in ood_metrics:
+        for name, data_loader in test_dataloader_dict.items():
+            LOG.info(f'{metric} score calculation for {name} ({num_batches * data_loader.batch_size} slices)...')
+            if metric == 'waic':
+                slice_wise_ood_scores, slice_wise_is_lesional, scans = sample_wise_waic_scores(models=ensemble_models,
+                                                                                               data_loader=data_loader,
+                                                                                               max_n_batches=num_batches,
+                                                                                               return_slices=True)
+            elif metric == 'dose':
+                slice_wise_ood_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(train_dataloader,
+                                                                                            data_loader,
+                                                                                            ensemble_models[0],
+                                                                                            dose_statistics,
+                                                                                            max_n_batches=num_batches,
+                                                                                            kde_func_dict=kde_func_dict)
+                slice_wise_is_lesional = dose_kde_dict['is_lesional']
+                scans = dose_kde_dict['scans']
+            else:
+                raise ValueError(f'Requested OOD metric {metric} not supported.')
+
+            # Organise as healthy / unhealthy
+            healthy_scores = []
+            lesional_scores = []
+            healthy_scans = []
+            lesional_scans = []
+            for idx in range(len(slice_wise_ood_scores)):
+                is_lesional_slice = slice_wise_is_lesional[idx]
+                if is_lesional_slice:
+                    lesional_scores.append(slice_wise_ood_scores[idx])
+                    if scans is not None:
+                        lesional_scans.append(scans[idx])
+                else:
+                    healthy_scores.append(slice_wise_ood_scores[idx])
+                    if scans is not None:
+                        healthy_scans.append(scans[idx])
+
+            dataset_ood_dict = {'all': slice_wise_ood_scores, 'healthy': healthy_scores, 'lesional': lesional_scores,
+                                'healthy_scans': healthy_scans, 'lesional_scans': lesional_scans}
+            metrics_ood_dict[metric][name] = dataset_ood_dict
+    return metrics_ood_dict
