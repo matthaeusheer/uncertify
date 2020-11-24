@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 
 from scipy.stats.kde import gaussian_kde
@@ -12,7 +13,8 @@ from typing import List, Union, Dict
 
 
 def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, statistics: List[str],
-                                    max_n_batches: int = None, residual_threshold: float = None) -> dict:
+                                    max_n_batches: int = None, residual_threshold: float = None,
+                                    health_state: str = 'all', only_non_empty: bool = True) -> dict:
     """Evaluate slice wise statistics and return aggregated results in a statistics-dict.
 
     Returns
@@ -23,17 +25,23 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
                                                                        f'statistics ({STATISTICS_FUNCTIONS})!'
     statistics_dict = defaultdict(list)
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
-                                                              progress_bar_suffix=f'Infer slice statistics')):
+                                                              progress_bar_suffix=f'(slice statistics '
+                                                                                  f'{data_loader.dataset.name})')):
         if batch.slice_wise_is_lesional is not None:
             statistics_dict['is_lesional'].extend(list(batch.slice_wise_is_lesional))
+        else:
+            statistics_dict['is_lesional'].extend(np.zeros(len(batch.scan), dtype=bool))
         statistics_dict['is_empty'].extend(list(batch.slice_wise_is_empty))
         for statistic in statistics:
-            statistics_dict[statistic].extend(list(get_slice_values_for_statistic(batch, statistic, 'all')))
+            statistics_dict[statistic].extend(get_slice_values_for_statistic(batch, statistic, health_state))
+    if only_non_empty:
+        non_empty_indices = np.invert(statistics_dict['is_empty'])
+        statistics_dict = {key: list(np.array(values)[non_empty_indices]) for key, values in statistics_dict.items()}
     return statistics_dict
 
 
 def get_slice_values_for_statistic(batch: BatchInferenceResult, statistic: str,
-                                   health_state: str = 'all') -> Union[np.ndarray]:
+                                   health_state: str = 'all') -> np.ndarray:
     """Get the slice-wise value from a batch inference result for either all, only healthy or only lesional slices."""
     assert health_state in ['all', 'healthy', 'lesional'], f'Provided health_state argument {health_state} invalid.'
     assert statistic in STATISTICS_FUNCTIONS, f'Provided statistic not supported ' \
