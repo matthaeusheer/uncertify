@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from uncertify.evaluation.statistics import aggregate_slice_wise_statistics, fit_statistics
 from uncertify.evaluation.statistics import STATISTICS_FUNCTIONS
 
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Iterable
 
 
 def compute_slice_wise_dose_kde_scores(model: nn.Module, test_dataloader: DataLoader,
@@ -28,19 +28,21 @@ def compute_slice_wise_dose_kde_scores(model: nn.Module, test_dataloader: DataLo
         kde_values = kde_func_dict[stat_name](test_stat_values)
         dose_kde_dict[stat_name] = kde_values
     dose_kde_dict.update({'is_lesional': test_stat_dict['is_lesional']})
+    dose_kde_dict.update({'scans': test_stat_dict['scans']})
     return dose_kde_dict
 
 
 def compute_slice_wise_dose_scores(dose_kde_dict: Dict[str, List[float]]) -> List[float]:
     """Construct KDE score by summing up the different KDE fit values for a sample."""
     slice_wise_dose_scores = []
-    for dose_kde_values in zip(*{key: values for key, values in dose_kde_dict.items() if values is not None}.values()):
+    for dose_kde_values in zip(*{key: values for key, values in dose_kde_dict.items()
+                                 if key in STATISTICS_FUNCTIONS.keys()}.values()):
         slice_wise_dose_scores.append(sum(dose_kde_values))
     return slice_wise_dose_scores
 
 
 def full_pipeline_slice_wise_dose_scores(train_dataloader: DataLoader, test_dataloader: DataLoader,
-                                         model: nn.Module, statistics: List[str], max_n_batches: int = None,
+                                         model: nn.Module, statistics: Iterable[str], max_n_batches: int = None,
                                          kde_func_dict: Dict[str, gaussian_kde] = None) -> Tuple[List[float],
                                                                                                  Dict[str, List[float]]]:
     """Run the whole DoSE pipeline to get slice-wise dose scores for samples from test_dataloader.
