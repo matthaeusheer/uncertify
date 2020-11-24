@@ -83,3 +83,12 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
         slice_wise_ood_scores.append(waic)
 
     return slice_wise_ood_scores, slice_wise_is_lesional, slice_wise_scans if len(slice_wise_scans) > 0 else None
+
+
+def sample_wise_dose_scores(models: Iterable[nn.Module], data_loader: DataLoader,
+                            residual_threshold: float = None, max_n_batches: int = None,
+                            return_slices: bool = False) -> Tuple[List[float],
+                                                                  List[bool],
+                                                                  Optional[List[Tensor]]]:
+    """Computes all per-slice DoSE scores for all batches of the generator."""
+    raise NotImplementedError
