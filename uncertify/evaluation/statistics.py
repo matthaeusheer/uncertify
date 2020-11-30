@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from uncertify.evaluation.inference import yield_inference_batches, BatchInferenceResult
-from uncertify.utils.custom_types import Tensor
+from uncertify.evaluation.waic import sample_wise_waic_scores
 
 from typing import List, Dict, Iterable
 
@@ -113,6 +113,10 @@ def rec_error_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
 
 def elbo_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
     return -batch.kl_div + batch.rec_err
+
+
+def waic_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
+    return np.array(sample_wise_waic_scores())
 
 
 STATISTICS_FUNCTIONS = {

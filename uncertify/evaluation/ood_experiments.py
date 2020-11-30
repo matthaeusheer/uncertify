@@ -8,7 +8,7 @@ from uncertify.common import DATA_DIR_PATH
 from uncertify.evaluation.configs import EvaluationConfig, EvaluationResult, PixelAnomalyDetectionResult, \
     SliceAnomalyDetectionResults, OODDetectionResults
 from uncertify.evaluation.evaluation_pipeline import run_ood_detection_performance, print_results_from_evaluation_dirs
-from uncertify.evaluation.ood_metrics import LOG, sample_wise_waic_scores
+from uncertify.evaluation.waic import LOG, sample_wise_waic_scores
 from uncertify.evaluation.dose import full_pipeline_slice_wise_dose_scores
 from uncertify.evaluation.statistics import aggregate_slice_wise_statistics, fit_statistics
 
@@ -19,7 +19,8 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ens
                         residual_threshold: float = None, max_n_batches: int = None,
                         eval_results_dir: Path = DATA_DIR_PATH / 'evaluation',
                         print_results_when_done: bool = True) -> None:
-    """Run OOD evaluation pipeline for multiple dataloaders amd store output in evaluation output directory.
+    """Run OOD evaluation pipeline for multiple dataloaders amd store output in evaluation output directory. There
+    will be one evaluation output directory per OOD dataloader.
 
     Arguments
         train_dataloader: the in-distribution dataloader from training the model
