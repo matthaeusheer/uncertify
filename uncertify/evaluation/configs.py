@@ -38,8 +38,8 @@ class PerformanceEvaluationConfig:
 
 @dataclass
 class OodEvaluationConfig:
-    metrics: tuple = ('dose', )  # 'waic'
-    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo')
+    metrics: tuple = ('waic', )  # 'dose'
+    dose_statistics: tuple = ('elbo', )  # ('rec_err', 'kl_div', 'elbo')
 
 
 @dataclass
@@ -51,7 +51,7 @@ class EvaluationConfig:
     use_n_batches: int = None  # Handy for faster evaluation or debugging
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
-    do_plots: bool = False
+    do_plots: bool = True
 
 
 @dataclass

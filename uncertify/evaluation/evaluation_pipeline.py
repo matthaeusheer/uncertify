@@ -17,7 +17,7 @@ from uncertify.evaluation.thresholding import calculate_fpr_minus_accepted
 from uncertify.evaluation.model_performance import mean_std_dice_scores
 from uncertify.evaluation.model_performance import mean_std_iou_scores
 from uncertify.algorithms.golden_section_search import golden_section_search
-from uncertify.evaluation.ood_metrics import sample_wise_waic_scores
+from uncertify.evaluation.waic import sample_wise_waic_scores
 from uncertify.evaluation.dose import full_pipeline_slice_wise_dose_scores, aggregate_slice_wise_statistics
 from uncertify.evaluation.statistics import fit_statistics
 from uncertify.evaluation.inference import yield_anomaly_predictions
@@ -78,6 +78,7 @@ def run_evaluation_pipeline(model: nn.Module,
                                                     results)
 
         results.to_json()
+
         return results
 
 
