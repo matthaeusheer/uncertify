@@ -1,4 +1,5 @@
 from collections import defaultdict
+import math
 
 from scipy.stats.kde import gaussian_kde
 import torch
@@ -9,6 +10,7 @@ import pandas as pd
 
 from uncertify.evaluation.inference import yield_inference_batches, BatchInferenceResult
 from uncertify.evaluation.waic import sample_wise_waic_scores
+from uncertify.utils.custom_types import Tensor
 
 from typing import List, Dict, Iterable
 
@@ -125,15 +127,39 @@ def elbo_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
     return -batch.kl_div + batch.rec_err
 
 
+def rec_error_entropy_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
+    """Calculates the slice-wise entropy of normalized l1 residual images."""
+    # Residual = residual_l1_max
+    residual_batch = batch.residual
+    batch_size, _, _, _ = residual_batch.shape
+    # Normalization
+    slice_wise_sum = torch.sum(residual_batch, dim=(1, 2, 3))
+    for slice_idx in range(batch_size):
+        residual_batch[slice_idx] /= slice_wise_sum[slice_idx]
+    # Calculate entropy per slice
+    entropy_array = np.empty(batch_size)
+    for idx, image in enumerate(residual_batch):
+        entropy_array[idx] = get_entropy(image[0])
+    return entropy_array
+
+
 def waic_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
-    return np.array(sample_wise_waic_scores())
+    raise NotImplementedError(f'WAIC score statistics not implemented yet!')
 
 
 STATISTICS_FUNCTIONS = {
     'kl_div': kl_div_batch_stat,
     'rec_err': rec_error_batch_stat,
-    'elbo': elbo_batch_stat
+    'elbo': elbo_batch_stat,
+    'entropy': rec_error_entropy_batch_stat
 }
+
+
+def get_entropy(image: Tensor) -> float:
+    entropy = 0.0
+    for pix in image[image > 0.0].flatten():
+        entropy -= float(pix) * math.log2(float(pix))
+    return entropy
 
 
 def statistics_dict_to_df(statistics_dict: dict, filter_out_empty: bool = True) -> pd.DataFrame:
