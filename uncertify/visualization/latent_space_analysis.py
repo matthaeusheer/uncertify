@@ -175,7 +175,7 @@ def plot_latent_samples_from_ring(model: torch.nn.Module, n_samples: int = 16, l
                                          inner_radius=inner_radius, n_samples=n_samples)
     output = infer_latent_space_samples(model, torch.tensor(latent_samples).float())
     fig, ax = plot_vae_output(output, figsize=(20, 20), one_channel=True, axis='off',
-                              add_colorbar=False, vmax=3,
+                              add_colorbar=False, vmax=3, nrow=16,
                               title=f'Inner / Outer radius: {inner_radius, outer_radius}', **kwargs)
     return fig
 

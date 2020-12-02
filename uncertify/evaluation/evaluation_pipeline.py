@@ -3,6 +3,8 @@ from functools import partial
 import random
 from pathlib import Path
 import json
+from dataclasses import asdict
+from pprint import pprint
 
 import yaml
 import numpy as np
@@ -184,11 +186,11 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                               title=f'PR Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
         prc_fig.savefig(results.plot_dir_path / 'pixel_wise_prc.png')
 
-    if anomaly_scores.pixel_wise.y_pred is not None:
-        conf_matrix = confusion_matrix(anomaly_scores.pixel_wise.y_true, anomaly_scores.pixel_wise.y_pred)
-        confusion_matrix_fig, _ = plot_confusion_matrix(conf_matrix, categories=['normal', 'anomaly'],
-                                                        cbar=False, cmap='YlOrRd_r', figsize=(6, 6))
-        confusion_matrix_fig.savefig(results.plot_dir_path / 'pixel_wise_confusion_matrix.png')
+        if anomaly_scores.pixel_wise.y_pred is not None:
+            conf_matrix = confusion_matrix(anomaly_scores.pixel_wise.y_true, anomaly_scores.pixel_wise.y_pred)
+            confusion_matrix_fig, _ = plot_confusion_matrix(conf_matrix, categories=['normal', 'anomaly'],
+                                                            cbar=False, cmap='YlOrRd_r', figsize=(6, 6))
+            confusion_matrix_fig.savefig(results.plot_dir_path / 'pixel_wise_confusion_matrix.png')
     # TODO: Calculate Recall, Precision, Accuracy, F1 score from confusion matrix.
 
     # Step 2 - Slice-wise anomaly detection
@@ -268,8 +270,8 @@ def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val
 def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloader: DataLoader,
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
-    LOG.info('Running OOD detection performance...')
     results.test_set_name = val_dataloader.dataset.name
+    LOG.info(f'Running OOD detection performance on {results.test_set_name}...')
     min_length_dataloader = min(len(train_dataloader), len(val_dataloader))
     use_n_batches = min(eval_cfg.use_n_batches, min_length_dataloader)
     supported_metrics = ['waic', 'dose']
@@ -419,15 +421,16 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
 
 
 def print_results(results: EvaluationResult) -> None:
+    print('===== Evaluation Results =====')
     # Pixel-wise Anomaly Detection
-    print('Pixel-wise Anomaly Detection')
-    print(results.pixel_anomaly_result)
+    print('--- Pixel-wise Anomaly Detection ---')
+    pprint(asdict(results.pixel_anomaly_result))
     # Slice-wise Anomaly Detection
-    print('Slice-wise Anomaly Detection')
-    print(results.slice_anomaly_results)
+    print('--- Slice-wise Anomaly Detection ---')
+    pprint(asdict(results.slice_anomaly_results))
     # OOD detection
-    print('OOD Detection')
-    print(results.ood_detection_results)
+    print('--- OOD Detection ---')
+    pprint(asdict(results.ood_detection_results))
 
 
 def print_results_from_evaluation_dirs(work_dir_path: Path, run_numbers: list,

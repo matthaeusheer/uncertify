@@ -20,7 +20,8 @@ from typing import Generator, Dict, Tuple
 
 
 def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInferenceResult, None, None],
-                                             plot_n_batches: int = 3, save_dir_path: Path = None, **kwargs) -> None:
+                                             plot_n_batches: int = 3, nrow: int = 8,
+                                             save_dir_path: Path = None, **kwargs) -> None:
     """Plot the scan and reconstruction batches. Horizontally aligned are the samples from one batch.
     Vertically aligned are input image, ground truth segmentation, reconstruction, residual image, residual with
     applied threshold, ground truth and predicted segmentation in same image.
@@ -28,6 +29,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
         batch_generator: a PyTorch DataLoader as defined in the uncertify dataloaders module
         plot_n_batches: limit plotting to this amount of batches
         save_dir_path: path to directory in which to store the resulting plots - will be created if not existent
+        nrow: numbers of samples in one row, default is 8
         kwargs: additional keyword arguments for plotting functions
     """
     if save_dir_path is not None:
@@ -43,7 +45,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
                 stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)
             else:
                 stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)
-            grid = torchvision.utils.make_grid(stacked, padding=0, normalize=False)
+            grid = torchvision.utils.make_grid(stacked, padding=0, normalize=False, nrow=nrow)
             describe = scipy.stats.describe(grid.numpy().flatten())
             print_scipy_stats_description(describe, 'normalized_grid')
             fig, ax = imshow_grid(grid, one_channel=True, **kwargs)

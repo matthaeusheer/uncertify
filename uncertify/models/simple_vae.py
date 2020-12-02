@@ -29,11 +29,11 @@ class SimpleVariationalAutoEncoder(VariationalAutoEncoder):
         total_loss = torch.mean(-kld + reconstruction_loss)
         return total_loss, torch.mean(reconstruction_loss), torch.mean(kld)
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-        mu, log_var = self._encoder(x)
+    def forward(self, img_tensor: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        mu, log_var = self._encoder(img_tensor)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        total_loss, rec_loss, kld = self.loss_function(reconstruction, x, mu, log_var)
+        total_loss, rec_loss, kld = self.loss_function(reconstruction, img_tensor, mu, log_var)
         return reconstruction, mu, log_var, total_loss, rec_loss, kld, latent_code
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:

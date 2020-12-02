@@ -1,7 +1,7 @@
 from torch import nn
 
 from uncertify.models.encoder_decoder_baur2020 import BaurDecoder, BaurEncoder
-from uncertify.models.encoder_decoder_baur2020 import Conv2DBlock, ConvTranspose2DBlock
+from uncertify.models.encoders_decoders import Conv2DBlock, ConvTranspose2DBlock
 from uncertify.models.utils import conv2d_output_shape, convtranspose2d_output_shape
 
 

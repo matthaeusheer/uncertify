@@ -1,7 +1,7 @@
-import sys
 from collections import defaultdict
 
 from scipy.stats.kde import gaussian_kde
+import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -28,6 +28,7 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     statistics_dict = defaultdict(list)  # statistics are keys and list of scores are values
     slice_wise_scans = []  # track scans for later visualization
     slices_keep_mask = []  # the indices mask which decides which slices we keep
+    slice_wise_seg_maps = []
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
                                                               progress_bar_suffix=f'(slice statistics '
                                                                                   f'{data_loader.dataset.name})')):
@@ -46,16 +47,25 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
         for statistic in statistics:
             statistics_dict[statistic].extend(list(STATISTICS_FUNCTIONS[statistic](batch)))
 
-        # Track scans for visualizations later on
+        # Track scans and potentially ground truth segmentation for visualizations later on
         for scan in batch.scan:
             slice_wise_scans.append(scan)
+        if batch.segmentation is not None:
+            print(data_loader.dataset.name)
+            print(batch.scan.shape)
+            print(batch.segmentation.shape)
+            for seg in batch.segmentation:
+                slice_wise_seg_maps.append(seg)
+        else:
+            for _ in range(len(batch.scan)):
+                slice_wise_seg_maps.append(torch.zeros_like(batch.scan[0]))
 
     # Apply indices mask to filter out empty slices or slices from other health state
     mask_slice_indices = [idx for idx, keep_slice in enumerate(slices_keep_mask) if keep_slice]
     statistics_dict = {key: [values[idx] for idx in mask_slice_indices] for key, values in statistics_dict.items()}
     slice_wise_scans = [slice_wise_scans[idx] for idx in mask_slice_indices]
     statistics_dict.update({'scans': slice_wise_scans})
-
+    statistics_dict.update({'segmentations': slice_wise_seg_maps})
     return statistics_dict
 
 
