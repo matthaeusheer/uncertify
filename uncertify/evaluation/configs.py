@@ -18,7 +18,7 @@ class PixelThresholdSearchConfig:
     accepted_fpr: float = 0.1
     # Min, max, and number of values for fpr vs threshold calculations
     min_val: float = 0.0
-    max_val: float = 4.0
+    max_val: float = 3.0
     num_values: int = 7
     # Subsequent Golden Section Search parameters
     gss_lower_val: float = 0.0
@@ -38,8 +38,8 @@ class PerformanceEvaluationConfig:
 
 @dataclass
 class OodEvaluationConfig:
-    metrics: tuple = ('waic', )  # 'dose'
-    dose_statistics: tuple = ('elbo', )  # ('rec_err', 'kl_div', 'elbo')
+    metrics: tuple = ('dose', )  # 'waic'
+    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo')  # ('rec_err', 'kl_div', 'elbo')
 
 
 @dataclass
@@ -51,7 +51,7 @@ class EvaluationConfig:
     use_n_batches: int = None  # Handy for faster evaluation or debugging
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
-    do_plots: bool = True
+    do_plots: bool = False
 
 
 @dataclass

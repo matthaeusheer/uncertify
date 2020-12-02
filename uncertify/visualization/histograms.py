@@ -68,6 +68,7 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
     # Prepare dictionaries holding sample-wise losses for different data loaders
     kl_divs = defaultdict(list)
     rec_errors = defaultdict(list)
+    elbos = defaultdict(list)
 
     # Perform inference and fill the data dicts for later plotting
     for generator, generator_name in zip(output_generators, names):
@@ -80,30 +81,38 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
                     n_normal_pixels = float(torch.sum(mask))
                     if n_normal_pixels == 0:
                         continue
-                    abnormal_fraction = n_abnormal_pixels / n_normal_pixels
-                    is_abnormal = n_abnormal_pixels > 20 # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
+                    # abnormal_fraction = n_abnormal_pixels / n_normal_pixels
+                    is_abnormal = n_abnormal_pixels > 20  # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
                     suffix = 'abnormal' if is_abnormal else 'normal'
                     kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
                     rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
+                    elbos[f' '.join([generator_name, suffix])].append(float(rec_err-kl_div))
             else:
                 for kl_div, rec_err in zip(batch.kl_div, batch.rec_err):  # sample-wise zip
                     kl_divs[generator_name].append(float(kl_div))
                     rec_errors[generator_name].append(float(rec_err))
+                    elbos[generator_name].append(float(rec_err-kl_div))
     kld_arrays = []
     kld_labels = []
     rec_arrays = []
     rec_labels = []
+    elbo_arrays = []
+    elbo_labels = []
     for name, arr in kl_divs.items():
         kld_arrays.append(np.array(arr))
         kld_labels.append(name)
     for name, arr in rec_errors.items():
         rec_arrays.append(np.array(rec_errors[name]))
         rec_labels.append(name)
+    for name, arr in elbos.items():
+        elbo_arrays.append(np.array(elbos[name]))
+        elbo_labels.append(name)
     kde_bandwidth = kwargs.get('kde_bandwidth', None)
     kwargs.pop('kde_bandwidth')
     fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KL Divergence',
                                      kde_bandwidth=kde_bandwidth[0], **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='NLL',
+    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)
-    return [(fig1, ax2), (fig2, ax2)]
-
+    fig3, ax3 = plot_multi_histogram(elbo_arrays, elbo_labels, xlabel='ELBO',
+                                     kde_bandwidth=kde_bandwidth[1], **kwargs)
+    return [(fig1, ax2), (fig2, ax2), (fig3, ax3)]

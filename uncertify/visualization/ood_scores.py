@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import torchvision
 import numpy as np
 
@@ -8,6 +9,8 @@ from uncertify.utils.python_helpers import get_indices_of_n_largest_items, get_i
 from uncertify.utils.python_helpers import get_idx_of_closest_value
 from uncertify.visualization.grid import imshow_grid
 from uncertify.common import DATA_DIR_PATH
+
+from uncertify.utils.custom_types import Tensor
 
 LOG = logging.getLogger(__name__)
 
@@ -56,7 +59,8 @@ def plot_ood_scores(ood_dataset_dict: dict, score_label: str = 'WAIC', dataset_n
         LOG.info(f'Saved OOD score figure at: {save_path}')
 
 
-def plot_most_least_ood(waic_dict: dict, dataset_name: str, n_most: int = 16, do_lesional: bool = True) -> None:
+def plot_most_least_ood(waic_dict: dict, dataset_name: str, n_most: int = 16, do_lesional: bool = True,
+                        small_score_is_more_odd: bool = True) -> None:
     """For healthy and lesional samples, plot the ones which are most and least OOD."""
     ood_dict = waic_dict[dataset_name]
 
@@ -69,10 +73,12 @@ def plot_most_least_ood(waic_dict: dict, dataset_name: str, n_most: int = 16, do
         largest_slices = [slices[idx] for idx in largest_score_indices]
         smallest_slices = [slices[idx] for idx in smallest_score_indices]
 
-        largest_grid = torchvision.utils.make_grid(largest_slices, padding=0, normalize=False)
-        smallest_grid = torchvision.utils.make_grid(smallest_slices, padding=0, normalize=False)
-
-        return largest_grid, smallest_grid
+        largest_values_grid = torchvision.utils.make_grid(largest_slices, padding=0, normalize=False)
+        smallest_values_grid = torchvision.utils.make_grid(smallest_slices, padding=0, normalize=False)
+        if small_score_is_more_odd:
+            return smallest_values_grid, largest_values_grid
+        else:
+            return largest_values_grid, smallest_values_grid
 
     LOG.debug('Creating healthy grids...')
     most_ood_healthy_grid, least_ood_healthy_grid = create_ood_grids('healthy')
@@ -92,7 +98,7 @@ def plot_most_least_ood(waic_dict: dict, dataset_name: str, n_most: int = 16, do
 
 
 def plot_samples_close_to_score(ood_dict: dict, dataset_name: str, min_score: float, max_score: float, n: int = 32,
-                                do_lesional: bool = True) -> None:
+                                do_lesional: bool = True, show_ground_truth: bool = False) -> None:
     """Arrange slices in a grid such that each slice displayed is closest to the interpolation OOD score from
     linspace which goes from min_score to max_score with n samples."""
     ood_dict = ood_dict[dataset_name]
@@ -101,23 +107,33 @@ def plot_samples_close_to_score(ood_dict: dict, dataset_name: str, min_score: fl
     def create_ood_grids(healthy_leasional: str):
         scores = ood_dict[healthy_leasional]
         slices = ood_dict[f'{healthy_leasional}_scans']
+        segmentations = ood_dict[f'{healthy_leasional}_segmentations']
 
         final_scores = []
         final_slices = []
+        final_segmentations = []
 
         for ref_score in ref_scores:
             scores_idx = get_idx_of_closest_value(scores, ref_score)
             final_scores.append(scores[scores_idx])
             final_slices.append(slices[scores_idx])
+            final_segmentations.append(segmentations[scores_idx])
 
-        return torchvision.utils.make_grid(final_slices, padding=0, normalize=False)
+        slices_grid = torchvision.utils.make_grid(final_slices, padding=0, normalize=False)
+        segmentations_grid = torchvision.utils.make_grid(final_segmentations, padding=0, normalize=False)
+        # TODO: This probably fails if no segmentations are available
+        return slices_grid, segmentations_grid
 
-    healthy_grid = create_ood_grids('healthy')
-    if do_lesional:
-        lesional_grid = create_ood_grids('lesional')
-
-    imshow_grid(healthy_grid, one_channel=True, figsize=(12, 8),
+    healthy_slices_grid, healthy_segmentations_grid = create_ood_grids('healthy')
+    imshow_grid(healthy_slices_grid, one_channel=True, figsize=(12, 8),
                 title=f'Healthy {dataset_name} {min_score}-{max_score}', axis='off')
+    if show_ground_truth:
+        imshow_grid(healthy_segmentations_grid, one_channel=True, figsize=(12, 8),
+                    title=f'Healthy Ground Truth {dataset_name} {min_score}-{max_score}', axis='off')
     if do_lesional:
-        imshow_grid(lesional_grid, one_channel=True, figsize=(12, 8),
+        lesional_slices_grid, lesional_segmentations_grid = create_ood_grids('lesional')
+        imshow_grid(lesional_slices_grid, one_channel=True, figsize=(12, 8),
                     title=f'Lesional {dataset_name} {min_score}-{max_score}', axis='off')
+        if show_ground_truth:
+            imshow_grid(lesional_segmentations_grid, one_channel=True, figsize=(12, 8),
+                        title=f'Lesional Ground Truth {dataset_name} {min_score}-{max_score}', axis='off')

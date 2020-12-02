@@ -8,6 +8,7 @@ from itertools import islice
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.nn.functional as torch_functional
 from torch.utils.data import DataLoader
 from torch import nn
 import torchvision
@@ -53,17 +54,18 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._ood_dataloaders = ood_dataloaders
         self._loss_type = loss_type
 
-    def forward(self, x: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor,
-                                                        Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def forward(self, img_tensor: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor,
+                                                                 Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Feed forward computation.
         Args:
-            x: raw image tensor (un-flattened)
+            img_tensor: raw image tensor (un-flattened)
             mask: the brain mask
         """
-        mu, log_var = self._encoder(x)
+        mu, log_var = self._encoder(img_tensor)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, x, mask, mu, log_var)
+        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, img_tensor, mask,
+                                                                                    mu, log_var)
         return reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code
 
     @staticmethod
@@ -100,7 +102,6 @@ class VariationalAutoEncoder(pl.LightningModule):
         # Run validation batch through model and get losses
         rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
                                                                                                            mask)
-
         # Those values will be tracked and can be accessed in validation_epoch_end
         val_return_dict = {'val_total_loss': total_loss,
                            'val_kl_div': mean_kl_div,
@@ -124,7 +125,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._log_random_eval_batch_reconstruction(outputs)
 
         # Sample from latent space and log reconstructions, from unit Gaussian and from within ranges
-        for min_max_range in [None, (1, 2), (3, 4), (6, 7), (50, 100), (100, 150), (200, 240)]:
+        for min_max_range in [None, (1, 2), (3, 4), (6, 7), (20, 30), (50, 100), (100, 150)]:
             self._log_latent_samples_reconstructions(n_samples=16, min_max_radius=min_max_range)
 
         # Sample from OOD datasets if provided
@@ -141,16 +142,18 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
-        # p(x|z)
         if self._loss_type == 'l2':
-            p_x_z = dist.Normal(reconstruction, 1.0)
+            rec_dist = dist.Normal(reconstruction, 1.0)
         elif self._loss_type == 'l1':
-            p_x_z = dist.Laplace(reconstruction, 1.0)
+            rec_dist = dist.Laplace(reconstruction, 1.0)
         else:
             raise ValueError(f'Loss type "{self._loss_type}" not supported.')
 
-        log_p_x_z = p_x_z.log_prob(observation)
-        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))
+        """
+        # p(x|z)
+        log_p_x_z = rec_dist.log_prob(observation)
+        log_p_x_z = torch.mean(log_p_x_z, dim=(1, 2, 3))  # Per slice negative log likelihood
+        slice_rec_err = log_p_x_z
 
         # p(z)
         z_prior = dist.Normal(0.0, 1.0)
@@ -159,21 +162,40 @@ class VariationalAutoEncoder(pl.LightningModule):
         z_post = dist.Normal(mu, torch.sqrt(torch.exp(log_var)))
 
         # KL(q(z|x), p(z))
-        kl_div = dist.kl_divergence(z_post, z_prior)
-        kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
-        kl_div = self._calculate_beta(self._train_step_counter) * kl_div
+        slice_kl_div = dist.kl_divergence(z_post, z_prior)
+        slice_kl_div = torch.mean(slice_kl_div, dim=1)  # KL divergences for each slice
+        slice_kl_div = self._calculate_beta(self._train_step_counter) * slice_kl_div
 
         # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise
-        mean_kl_div = torch.mean(kl_div)
-        mean_log_p_x_z = torch.mean(log_p_x_z)
+        batch_kl_div = torch.mean(slice_kl_div)
+        batch_rec_err = torch.mean(log_p_x_z)
 
-        variational_lower_bound = (-mean_kl_div + mean_log_p_x_z) * self._n_m_factor
+        variational_lower_bound = (-batch_kl_div + batch_rec_err) * self._n_m_factor
         total_loss = -variational_lower_bound
+        """
 
-        return total_loss, mean_kl_div, -mean_log_p_x_z, kl_div, -log_p_x_z
+        mask = torch.ones_like(reconstruction) if mask is None else mask
+
+        # Reconstruction Error
+        slice_rec_err = torch_functional.l1_loss(observation*mask, reconstruction*mask, reduction='none')
+        slice_rec_err = torch.sum(slice_rec_err, dim=(1, 2, 3))
+        slice_wise_non_empty = torch.sum(mask, dim=(1, 2, 3))
+        slice_wise_non_empty[slice_wise_non_empty == 0] = 1  # for empty masks
+        slice_rec_err /= slice_wise_non_empty
+        batch_rec_err = torch.mean(slice_rec_err)
+
+        # KL Divergence
+        slice_kl_div = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp(), dim=1)
+        batch_kl_div = torch.mean(slice_kl_div)
+        kld_loss = batch_kl_div * self._calculate_beta(self._train_step_counter)
+
+        # Total Loss
+        total_loss = batch_rec_err + kld_loss
+
+        return total_loss, batch_kl_div, batch_rec_err, slice_kl_div, slice_rec_err
 
     def loss_function_new(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
-                      beta: float = 1.0, train_step: int = None):
+                          beta: float = 1.0, train_step: int = None):
         mask = torch.ones_like(reconstruction) if mask is None else mask
         # p(x|z)
         if self._loss_type == 'l2':
@@ -200,9 +222,9 @@ class VariationalAutoEncoder(pl.LightningModule):
         z_post = dist.Normal(mu, torch.sqrt(torch.exp(log_var)))
 
         # KL(q(z|x), p(z))
-        kl_div = dist.kl_divergence(z_post, z_prior)
-        kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
-        kl_div = self._calculate_beta(self._train_step_counter) * kl_div
+        #kl_div = dist.kl_divergence(z_post, z_prior)
+        #  kl_div = torch.mean(kl_div, dim=1)  # KL divergences for each slice
+        # kl_div = self._calculate_beta(self._train_step_counter) * kl_div
 
         # Take the mean over all batches to get batch-wise kl divergence and log likelihood compared to slice-wise
         mean_kl_div = torch.mean(kl_div)

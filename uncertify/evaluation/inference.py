@@ -101,7 +101,7 @@ def yield_inference_batches(data_loader: DataLoader,
         # Run actual inference for batch
         trained_model.eval()
         with torch.no_grad():
-            inference_result = trained_model(scan_batch, batch['mask'])
+            inference_result = trained_model(scan_batch, batch['mask'] if 'mask' in batch.keys() else None)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
         # Do residual calculation
@@ -116,7 +116,6 @@ def yield_inference_batches(data_loader: DataLoader,
         if residual_threshold is not None:
             result.residual_threshold = residual_threshold
             result.residuals_thresholded = threshold_batch_to_one_zero(residual_batch, residual_threshold)
-
         if 'seg' in batch.keys():
             result.segmentation = convert_segmentation_to_one_zero(batch['seg'])
             result.slice_wise_is_lesional = (torch.sum(result.segmentation, axis=(1, 2, 3)) >

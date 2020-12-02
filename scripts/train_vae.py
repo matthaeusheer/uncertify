@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 import logging
+from pprint import pformat
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -12,6 +13,7 @@ import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.simple_vae import SimpleVariationalAutoEncoder
 from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder, SmallBaurDecoder
+from uncertify.models.zimmerer import ZimmererEncoder, ZimmererDecoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
 from uncertify.log import setup_logging
@@ -61,8 +63,8 @@ def parse_args() -> argparse.Namespace:
         '-m',
         '--model',
         type=str,
-        default='vae',
-        choices=['vae', 'simple_vae'],
+        default='baur',
+        choices=['baur', 'zimmerer'],
         help='Which version of VAE to train.'
     )
     parser.add_argument(
@@ -124,16 +126,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
-    LOG.info(f'Argparse args: {args.__dict__}')
+    LOG.info(f'Argparse args: {pformat(args.__dict__)}')
     logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
     trainer_kwargs = {'logger': logger,
                       'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
-                      'distributed_backend': 'ddp',
-                      #'limit_train_batches': 0.1,
-                      #'limit_val_batches': 0.1,
-                      'max_epochs': 40,
+                      # 'distributed_backend': 'ddp',
+                      # 'limit_train_batches': 0.2,
+                      # 'limit_val_batches': 0.1,
+                      'max_epochs': 70,
                       'profiler': False,
                       'fast_dev_run': False}
     checkpoint_callback = ModelCheckpoint(
@@ -167,10 +169,11 @@ def main(args: argparse.Namespace) -> None:
                                                           train_set_path=args.train_set_path,
                                                           val_set_path=args.val_set_path,
                                                           transform=transform,
-                                                          num_workers=args.num_workers)
+                                                          num_workers=args.num_workers,
+                                                          shuffle_train=True)
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
-    print(beta_config)
+    LOG.info(beta_config)
     ood_dataloaders = []
     for hdf5_set_path in args.ood_set_paths:
         name = hdf5_set_path.name
@@ -208,9 +211,14 @@ def main(args: argparse.Namespace) -> None:
                                                    shuffle_val=True)
         ood_dataloaders.append({name: ood_val_dataloader})
 
-    if args.model == 'vae':
-        n_m_factor = 1.0  # len(train_dataloader.dataset) / train_dataloader.batch_size
-        model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=SmallBaurDecoder(),
+    n_m_factor = 1.0  # len(train_dataloader.dataset) / train_dataloader.batch_size
+    if args.model == 'baur':
+        model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
+                                       beta_config=beta_config,
+                                       n_m_factor=n_m_factor,
+                                       ood_dataloaders=ood_dataloaders)
+    elif args.model == 'zimmerer':
+        model = VariationalAutoEncoder(encoder=ZimmererEncoder(), decoder=ZimmererDecoder(),
                                        beta_config=beta_config,
                                        n_m_factor=n_m_factor,
                                        ood_dataloaders=ood_dataloaders)
@@ -218,6 +226,7 @@ def main(args: argparse.Namespace) -> None:
         model = SimpleVariationalAutoEncoder(BaurEncoder(), BaurDecoder())
     else:
         raise ValueError(f'Unrecognized model version {args.model}')
+    LOG.info(model)
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
 
 
