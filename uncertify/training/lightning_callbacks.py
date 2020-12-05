@@ -1,9 +1,13 @@
+from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-checkpoint_callback = ModelCheckpoint(
-    filepath='/path/to/store/weights.ckpt',
-    save_best_only=True,
-    verbose=True,
-    monitor='val_loss',
-    mode='min'
-)
+
+class SaveHyperParamsCallback(Callback):
+    def __init__(self, hyper_params: dict) -> None:
+        self._hyper_params = hyper_params
+
+    def on_fit_start(self, trainer: Trainer):
+        print('trainer is init now')
+        print(trainer.logger.log_dir)
+        print(self._hyper_params)
