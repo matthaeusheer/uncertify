@@ -26,8 +26,13 @@ BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
     NumpyReshapeTransform((200, 200)),
     Numpy2PILTransform(),
     torchvision.transforms.Resize((128, 128)),
-    torchvision.transforms.ToTensor()
-])
+    torchvision.transforms.ToTensor()]
+)
+
+MNIST_DEFAULT_TRANSFORM = torchvision.transforms.Compose(
+    [torchvision.transforms.Resize((128, 128)),
+     torchvision.transforms.ToTensor()]
+)
 
 
 def dataloader_factory(dataset_type: DatasetType, batch_size: int,

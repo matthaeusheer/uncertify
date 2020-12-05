@@ -1,3 +1,4 @@
+import os
 import argparse
 from pathlib import Path
 import logging
@@ -12,11 +13,14 @@ from torchvision.transforms.transforms import Compose
 import add_uncertify_to_path  # makes sure we can use the uncertify library
 from uncertify.models.vae import VariationalAutoEncoder
 from uncertify.models.simple_vae import SimpleVariationalAutoEncoder
-from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder, SmallBaurDecoder
+from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.models.zimmerer import ZimmererEncoder, ZimmererDecoder
 from uncertify.data.dataloaders import dataloader_factory, DatasetType
+from uncertify.data.dataloaders import BRATS_CAMCAN_DEFAULT_TRANSFORM, MNIST_DEFAULT_TRANSFORM
 from uncertify.data.np_transforms import Numpy2PILTransform, NumpyReshapeTransform
+from uncertify.training.lightning_callbacks import SaveHyperParamsCallback
 from uncertify.log import setup_logging
+from uncertify.io.json import store_dict
 from uncertify.models.beta_annealing import beta_config_factory
 from utils import ArgumentParserWithDefaults
 from uncertify.common import DATA_DIR_PATH
@@ -122,45 +126,83 @@ def parse_args() -> argparse.Namespace:
         default=Path(__file__).stem,
         help='The folder name within the "lightning_logs" directory in which to store the runs.'
     )
+    parser.add_argument(
+        '--max-n-epochs',
+        default=100,
+        help='The maximum number of epochs to train for.'
+    )
+    parser.add_argument(
+        '--n-ensembles',
+        type=int,
+        default=1,
+        help='Number of (ensemble) models to train with the same parameter settings.'
+    )
+    parser.add_argument(
+        '--fast-dev-run',
+        default=False,
+        action='store_true',
+        help='Runs a quick train and validation loop for debugging.'
+    )
     return parser.parse_args()
 
 
-def main(args: argparse.Namespace) -> None:
-    LOG.info(f'Argparse args: {pformat(args.__dict__)}')
-    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
-    trainer_kwargs = {'logger': logger,
-                      'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
-                      'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
-                      'gpus': 1,
-                      # 'distributed_backend': 'ddp',
-                      # 'limit_train_batches': 0.2,
-                      # 'limit_val_batches': 0.1,
-                      'max_epochs': 70,
-                      'profiler': False,
-                      'fast_dev_run': False}
+def get_callbacks(args: argparse.Namespace) -> list:
+    """Define all pytorch lightning callbacks to be passed into the lightning trainer."""
     checkpoint_callback = ModelCheckpoint(
         save_last=True,
         verbose=True,
         monitor='avg_val_mean_total_loss',
         mode='min'
     )
-    trainer = pl.Trainer(**trainer_kwargs,
-                         checkpoint_callback=checkpoint_callback)  # , early_stop_callback=early_stop_callback)
+    callbacks = [checkpoint_callback]
+    return callbacks
 
+
+def get_trainer_kwargs(args: argparse.Namespace) -> dict:
+    """Define the lightning trainer keyword arguments based on the command line arguments parsed."""
+    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
+    trainer_kwargs = {'logger': logger,
+                      'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
+                      'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
+                      'gpus': 1,
+                      'distributed_backend': 'ddp',
+                      # 'limit_train_batches': 0.2,
+                      # 'limit_val_batches': 0.1,
+                      'max_epochs': args.max_n_epochs,
+                      'profiler': False,
+                      'fast_dev_run': args.fast_dev_run}
+    return trainer_kwargs
+
+
+def make_args_json_serializable(args: argparse.Namespace) -> dict:
+    """Replace the PosixPath items with str such that we can serialize the hyper parameters."""
+    args_dict = dict(args.__dict__)
+    for key, val in args_dict.items():
+        if isinstance(val, Path):
+            args_dict[key] = str(val)
+        if isinstance(val, list):
+            if any([isinstance(item, Path) for item in val]):
+                args_dict[key] = [str(item) if isinstance(item, Path) else item for item in val]
+    return args_dict
+
+
+def main(args: argparse.Namespace) -> None:
+    LOG.info(f'Argparse args: {pformat(args.__dict__)}')
+
+    # Set up the trainer
+    trainer = pl.Trainer(**get_trainer_kwargs(args), callbacks=get_callbacks(args))
+
+    os.makedirs(trainer.logger.log_dir)
+    store_dict(make_args_json_serializable(args), Path(trainer.logger.log_dir), 'hyper_parameters.json')
+
+    # Setup training and validation data
     if args.dataset == 'mnist':
-        transform = Compose([torchvision.transforms.Resize((128, 128)),
-                             torchvision.transforms.ToTensor()])
+        transform = MNIST_DEFAULT_TRANSFORM
         dataset_type = DatasetType.MNIST
 
     elif args.dataset == 'camcan':
-        transform = Compose([
-            NumpyReshapeTransform((200, 200)),
-            Numpy2PILTransform(),
-            torchvision.transforms.Resize((128, 128)),
-            torchvision.transforms.ToTensor()
-        ])
+        transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
         dataset_type = DatasetType.CAMCAN
-
     else:
         raise ValueError(f'Dataset arg "{args.dataset}" not supported.')
 
@@ -171,31 +213,23 @@ def main(args: argparse.Namespace) -> None:
                                                           transform=transform,
                                                           num_workers=args.num_workers,
                                                           shuffle_train=True)
+    # Setup Beta-Annealing config
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
     LOG.info(beta_config)
+
+    # Setup OOD dataloaders to check against during training
     ood_dataloaders = []
     for hdf5_set_path in args.ood_set_paths:
         name = hdf5_set_path.name
         if 'brats' in name:
-            transform = Compose([
-                NumpyReshapeTransform((200, 200)),
-                Numpy2PILTransform(),
-                torchvision.transforms.Resize((128, 128)),
-                torchvision.transforms.ToTensor()
-            ])
+            transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
             dataset_type = DatasetType.BRATS17
         elif 'camcan' in name:
-            transform = Compose([
-                NumpyReshapeTransform((200, 200)),
-                Numpy2PILTransform(),
-                torchvision.transforms.Resize((128, 128)),
-                torchvision.transforms.ToTensor()
-            ])
+            transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
             dataset_type = DatasetType.CAMCAN
         elif 'mnist' in name:
-            transform = Compose([torchvision.transforms.Resize((128, 128)),
-                                 torchvision.transforms.ToTensor()])
+            transform = MNIST_DEFAULT_TRANSFORM
             dataset_type = DatasetType.MNIST
         elif 'noise' in name:
             transform = None
@@ -211,6 +245,7 @@ def main(args: argparse.Namespace) -> None:
                                                    shuffle_val=True)
         ood_dataloaders.append({name: ood_val_dataloader})
 
+    # Setup the actual VAE model
     n_m_factor = 1.0  # len(train_dataloader.dataset) / train_dataloader.batch_size
     if args.model == 'baur':
         model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
@@ -227,9 +262,14 @@ def main(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f'Unrecognized model version {args.model}')
     LOG.info(model)
+
+    # Start training - go go go!
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
 
 
 if __name__ == '__main__':
     setup_logging()
-    main(parse_args())
+    cmd_args = parse_args()
+    for model_idx in range(cmd_args.n_ensembles):
+        LOG.info(f'Training model {model_idx + 1} / {cmd_args.n_ensembles}')
+        main(cmd_args)
