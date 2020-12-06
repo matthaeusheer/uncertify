@@ -12,21 +12,9 @@ from uncertify.utils.custom_types import Tensor
 from typing import Tuple
 
 
-class HDF5Dataset(Dataset):
-    """Serves as a base class for BraTS2017 and CamCan datasets which come in HDF5 format."""
-
-    def __init__(self, hdf5_file_path: Path, transform: torchvision.transforms.Compose = None,
-                 uppercase_keys: bool = False) -> None:
-        if transform is not None:
-            assert isinstance(transform, torchvision.transforms.Compose), f'Only Compose transform allowed.'
-        self._hdf5_file_path = hdf5_file_path
-        self._transform = transform
+class UncertifyDataset(Dataset):
+    def __init__(self, uppercase_keys: bool = False) -> None:
         self._uppercase_keys = uppercase_keys
-
-    @cached_property
-    def dataset_shape(self) -> Tuple[int, int]:
-        num_samples, flat_dimensions = h5py.File(self._hdf5_file_path, 'r')[self._scan_key].shape
-        return num_samples, flat_dimensions
 
     @property
     def _scan_key(self) -> str:
@@ -36,16 +24,52 @@ class HDF5Dataset(Dataset):
     def _mask_key(self) -> str:
         return 'Mask' if self._uppercase_keys else 'mask'
 
+    @property
+    def _seg_key(self) -> str:
+        return 'Seg' if self._uppercase_keys else 'seg'
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
     def __len__(self) -> int:
-        return self.dataset_shape[0]
+        """Abstract method to implement to adhere do pytorch Dataset API."""
+        raise NotImplementedError
+
+    def __getitem__(self, idx: int) -> dict:
+        """Abstract method to implement to adhere do pytorch Dataset API."""
+        raise NotImplementedError
+
+
+class HDF5Dataset(UncertifyDataset):
+    """Serves as a base class for BraTS2017 and CamCan datasets which come in HDF5 format."""
+
+    def __init__(self, hdf5_file_path: Path, transform: torchvision.transforms.Compose = None,
+                 uppercase_keys: bool = False) -> None:
+        super().__init__(uppercase_keys)
+        if transform is not None:
+            assert isinstance(transform, torchvision.transforms.Compose), f'Only Compose transform allowed.'
+        self._hdf5_file_path = hdf5_file_path
+        self._transform = transform
+
+    @cached_property
+    def dataset_shape(self) -> Tuple[int, int]:
+        num_samples, flat_dimensions = h5py.File(self._hdf5_file_path, 'r')[self._scan_key].shape
+        return num_samples, flat_dimensions
 
     @property
     def name(self) -> str:
         return self._hdf5_file_path.name
 
+    def __len__(self) -> int:
+        return self.dataset_shape[0]
+
+    def __getitem__(self, idx: int) -> dict:
+        raise NotImplementedError
+
 
 class Brats2017HDF5Dataset(HDF5Dataset):
-    def __getitem__(self, idx) -> dict:
+    def __getitem__(self, idx: int) -> dict:
         h5py_file = h5py.File(self._hdf5_file_path, 'r')
         scan_sample = h5py_file[self._scan_key][idx]
         seg_sample = h5py_file[self._seg_key][idx]
@@ -65,13 +89,9 @@ class Brats2017HDF5Dataset(HDF5Dataset):
         # mask > 0 transforms mask into bool tensor
         return {self._scan_key: scan_sample, self._seg_key: seg_sample, self._mask_key: mask_sample > 0}
 
-    @property
-    def _seg_key(self) -> str:
-        return 'Seg' if self._uppercase_keys else 'seg'
-
 
 class CamCanHDF5Dataset(HDF5Dataset):
-    def __getitem__(self, idx) -> dict:
+    def __getitem__(self, idx: int) -> dict:
         h5py_file = h5py.File(self._hdf5_file_path, 'r')
         scan_sample = h5py_file[self._scan_key][idx]
         mask_sample = h5py_file[self._mask_key][idx].astype(bool)
@@ -101,7 +121,7 @@ class MnistDatasetWrapper(Dataset):
     def __len__(self) -> int:
         return len(self._mnist_dataset)
 
-    def __getitem__(self, idx) -> dict:
+    def __getitem__(self, idx: int) -> dict:
         return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
 
     @property
@@ -118,7 +138,7 @@ class GaussianNoiseDataset(Dataset):
     def __len__(self) -> int:
         return self._dataset_length
 
-    def __getitem__(self, idx) -> dict:
+    def __getitem__(self, idx: int) -> dict:
         return {'scan': self._generate_sample()}
 
     def _generate_sample(self) -> Tensor:
