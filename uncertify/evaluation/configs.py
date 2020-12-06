@@ -39,7 +39,7 @@ class PerformanceEvaluationConfig:
 @dataclass
 class OodEvaluationConfig:
     metrics: tuple = ('dose', )  # 'waic'
-    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo')  # ('rec_err', 'kl_div', 'elbo')
+    dose_statistics: tuple = ('elbo',) #, 'kl_div', 'elbo', 'entropy')  # ('rec_err', 'kl_div', 'elbo')
 
 
 @dataclass

@@ -12,6 +12,15 @@ def residual_l1_max(reconstruction: Tensor, original: Tensor) -> Tensor:
     return torch.where(residual > 0.0, residual, torch.zeros_like(residual))
 
 
+def residual_l1(reconstruction: Tensor, original: Tensor) -> Tensor:
+    """Construct the absolute l1 difference between original and reconstruction images."""
+    return torch.abs_(original - reconstruction)
+
+
+def mask_background_to_zero(input_tensor: Tensor, mask: Tensor) -> Tensor:
+    return torch.where(mask, input_tensor, torch.zeros_like(input_tensor))
+
+
 def threshold_batch_to_one_zero(tensor: Tensor, threshold: float) -> Tensor:
     """Apply threshold, s.t. output values become zero if smaller then threshold and one if bigger than threshold."""
     zeros = torch.zeros_like(tensor)

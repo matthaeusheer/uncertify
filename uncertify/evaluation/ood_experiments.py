@@ -100,6 +100,9 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
             lesional_scans = []
             healthy_gt = []
             lesional_gt = []
+            # For DoSE track organized individual dose scores as well
+            dose_kde_healthy = defaultdict(list)
+            dose_kde_lesional = defaultdict(list)
             for idx in range(len(slice_wise_ood_scores)):
                 is_lesional_slice = slice_wise_is_lesional[idx]
                 if is_lesional_slice:
@@ -108,15 +111,27 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                         lesional_scans.append(scans[idx])
                     if segmentations is not None:
                         lesional_gt.append(segmentations[idx])
+                    if metric == 'dose':
+                        for statistic in dose_statistics:
+                            dose_kde_lesional[statistic].append(dose_kde_dict[statistic][idx])
                 else:
                     healthy_scores.append(slice_wise_ood_scores[idx])
                     if scans is not None:
                         healthy_scans.append(scans[idx])
                     if segmentations is not None:
                         healthy_gt.append(segmentations[idx])
+                    if metric == 'dose':
+                        for statistic in dose_statistics:
+                            dose_kde_healthy[statistic].append(dose_kde_dict[statistic][idx])
 
-            dataset_ood_dict = {'all': slice_wise_ood_scores, 'healthy': healthy_scores, 'lesional': lesional_scores,
-                                'healthy_scans': healthy_scans, 'lesional_scans': lesional_scans,
-                                'healthy_segmentations': healthy_gt, 'lesional_segmentations': lesional_gt}
+            dataset_ood_dict = {'all': slice_wise_ood_scores,
+                                'healthy': healthy_scores,
+                                'lesional': lesional_scores,
+                                'healthy_scans': healthy_scans,
+                                'lesional_scans': lesional_scans,
+                                'healthy_segmentations': healthy_gt,
+                                'lesional_segmentations': lesional_gt,
+                                'dose_kde_healthy': dose_kde_healthy,
+                                'dose_kde_lesional': dose_kde_lesional}
             metrics_ood_dict[metric][name] = dataset_ood_dict
     return metrics_ood_dict

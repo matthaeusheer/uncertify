@@ -51,7 +51,8 @@ def plot_multi_histogram(arrays: List[np.ndarray],
             if show_data_ticks:
                 ax.plot(array, np.full_like(array, -0.01), '|', c=colors[idx], markeredgewidth=1)
     if labels is not None:
-        ax.legend(loc='best')
+        ax.legend(loc='best' if 'legend_pos' not in plt_kwargs.keys() else plt_kwargs.get('legend_pos'),
+                  title=plt_kwargs.get('legend_title', None), frameon=False)
     return fig, ax
 
 

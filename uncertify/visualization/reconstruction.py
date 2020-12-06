@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from uncertify.visualization.grid import imshow_grid
 from uncertify.utils.custom_types import Tensor
 from uncertify.utils.tensor_ops import normalize_to_0_1
+from uncertify.evaluation.utils import mask_background_to_zero
 from uncertify.utils.tensor_ops import print_scipy_stats_description
 from uncertify.evaluation.inference import BatchInferenceResult
 
@@ -36,9 +37,12 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
         save_dir_path.mkdir(exist_ok=True)
     with torch.no_grad():
         for batch_idx, batch in enumerate(itertools.islice(batch_generator, plot_n_batches)):
-            scan = normalize_to_0_1(batch.scan)
-            reconstruction = normalize_to_0_1(batch.reconstruction)
-            residual = normalize_to_0_1(batch.residual)
+            max_val = torch.max(torch.max(batch.reconstruction), torch.max(batch.scan))
+            min_val = torch.min(torch.min(batch.reconstruction), torch.min(batch.scan))
+            mask = batch.mask
+            scan = mask_background_to_zero(normalize_to_0_1(batch.scan, min_val, max_val), mask)
+            reconstruction = mask_background_to_zero(normalize_to_0_1(batch.reconstruction, min_val, max_val), mask)
+            residual = mask_background_to_zero(normalize_to_0_1(batch.residual, min_val, max_val), mask)
             thresholded = batch.residuals_thresholded
             if batch.segmentation is not None:
                 seg = batch.segmentation

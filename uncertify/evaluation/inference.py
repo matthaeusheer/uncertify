@@ -8,14 +8,13 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from uncertify.evaluation.utils import threshold_batch_to_one_zero, residual_l1_max, convert_segmentation_to_one_zero
+from uncertify.evaluation.utils import threshold_batch_to_one_zero, convert_segmentation_to_one_zero
+from uncertify.evaluation.utils import residual_l1, residual_l1_max, mask_background_to_zero
 from uncertify.utils.custom_types import Tensor
 
 from typing import Generator, Callable, List, Dict
 
 LOG = logging.getLogger(__name__)
-
-ABNORMAL_PIXEL_COUNT = 20  # Mark sample as abnormal when it has more than that amount of abnormal pixels
 
 
 @dataclass
@@ -104,8 +103,11 @@ def yield_inference_batches(data_loader: DataLoader,
             inference_result = trained_model(scan_batch, batch['mask'] if 'mask' in batch.keys() else None)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
-        # Do residual calculation
-        residual_batch = residual_fn(rec_batch, scan_batch)
+        # Do residual calculation and masking
+        mask_batch = batch['mask']
+        scan_batch = mask_background_to_zero(scan_batch, mask_batch)
+        rec_batch = mask_background_to_zero(rec_batch, mask_batch)
+        residual_batch = mask_background_to_zero(residual_fn(rec_batch, scan_batch), mask_batch)
 
         # Fill output container
         result.scan = scan_batch
@@ -140,7 +142,7 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                               trained_model: torch.nn.Module,
                               max_n_batches: int = None,
                               residual_threshold: float = None,
-                              residual_fn: Callable = residual_l1_max) -> AnomalyInferenceScores:
+                              residual_fn: Callable = residual_l1) -> AnomalyInferenceScores:
     """Yield flattened vectors over all (of max_n_batches, if not None) batches for y_true and y_pred.
 
     For Args: see yield_reconstruction_batches. Similar.
@@ -182,7 +184,7 @@ def yield_anomaly_predictions(data_loader: DataLoader,
             anomaly_scores.slice_wise['ELBO'].anomaly_score.y_pred_proba.extend(list(slice_wise_elbo))
             # Get ground truth by checking number of marked pixels
             slice_wise_n_abnormal_pixels = torch.sum(batch.segmentation > 0, axis=(1, 2, 3)).numpy()
-            slice_wise_is_abnormal = [count > ABNORMAL_PIXEL_COUNT for count in slice_wise_n_abnormal_pixels]
+            slice_wise_is_abnormal = [count > N_PIXEL_LESIONAL_THRESHOLD for count in slice_wise_n_abnormal_pixels]
             for criteria in SliceWiseCriteria:
                 anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.extend(slice_wise_is_abnormal)
     return anomaly_scores

@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from sklearn import metrics as sklearn_metrics
+from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, average_precision_score
 
 from uncertify.data.dataloaders import DataLoader
 from uncertify.evaluation.inference import yield_inference_batches
@@ -96,3 +97,23 @@ def calculate_confusion_matrix(data_loader: DataLoader, model: torch.nn.Module, 
             sub_confusion_matrix = sklearn_metrics.confusion_matrix(y_true, y_pred, normalize=normalize)
             confusion_matrix += sub_confusion_matrix
     return confusion_matrix
+
+
+def calculate_roc(y_true: Iterable, y_pred_proba: Iterable) -> Tuple[Iterable, Iterable, Iterable, float]:
+    """Calculate the roc curve for true labels and model predictions.
+    Returns:
+        (false_positive_rates, true_positive_rates, thresholds, area_under_roc_curve)
+    """
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred_proba)
+    au_roc = roc_auc_score(y_true, y_pred_proba)
+    return fpr, tpr, thresholds, au_roc
+
+
+def calculate_prc(y_true: Iterable, y_pred_proba: Iterable) -> Tuple[Iterable, Iterable, Iterable, float]:
+    """Calculate the prc curve for true labels and model predictions.
+    Returns:
+        (precisions, recalls, thresholds, area_under_prc_curve)
+    """
+    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_proba)
+    au_prc = average_precision_score(y_true, y_pred_proba)
+    return precision, recall, thresholds, au_prc
