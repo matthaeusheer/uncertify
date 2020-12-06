@@ -165,7 +165,7 @@ def get_trainer_kwargs(args: argparse.Namespace) -> dict:
                       'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
-                      'distributed_backend': 'ddp',
+                      # 'distributed_backend': 'ddp',
                       # 'limit_train_batches': 0.2,
                       # 'limit_val_batches': 0.1,
                       'max_epochs': args.max_n_epochs,

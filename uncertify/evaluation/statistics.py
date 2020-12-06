@@ -34,6 +34,7 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
                                                               progress_bar_suffix=f'(slice statistics '
                                                                                   f'{data_loader.dataset.name})')):
+        batch_size, _, _, _ = batch.scan.shape
         # Track which slices we keep based on slice health state and emptiness of brain mask
         health_state_mask = define_health_state_mask(health_state, batch)
         is_not_empty_mask = np.invert(batch.slice_wise_is_empty)
@@ -53,21 +54,21 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
         for scan in batch.scan:
             slice_wise_scans.append(scan)
         if batch.segmentation is not None:
-            print(data_loader.dataset.name)
-            print(batch.scan.shape)
-            print(batch.segmentation.shape)
             for seg in batch.segmentation:
                 slice_wise_seg_maps.append(seg)
         else:
-            for _ in range(len(batch.scan)):
+            for _ in range(batch_size):
                 slice_wise_seg_maps.append(torch.zeros_like(batch.scan[0]))
 
     # Apply indices mask to filter out empty slices or slices from other health state
     mask_slice_indices = [idx for idx, keep_slice in enumerate(slices_keep_mask) if keep_slice]
     statistics_dict = {key: [values[idx] for idx in mask_slice_indices] for key, values in statistics_dict.items()}
+
     slice_wise_scans = [slice_wise_scans[idx] for idx in mask_slice_indices]
+    slice_wise_seg_maps = [slice_wise_seg_maps[idx] for idx in mask_slice_indices]
     statistics_dict.update({'scans': slice_wise_scans})
     statistics_dict.update({'segmentations': slice_wise_seg_maps})
+
     return statistics_dict
 
 
@@ -156,6 +157,7 @@ STATISTICS_FUNCTIONS = {
 
 
 def get_entropy(image: Tensor) -> float:
+    """Calculate the standard entropy by considering all pixel values as a probability distribution."""
     entropy = 0.0
     for pix in image[image > 0.0].flatten():
         entropy -= float(pix) * math.log2(float(pix))

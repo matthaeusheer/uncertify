@@ -11,12 +11,12 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from sklearn.metrics import average_precision_score, roc_auc_score, roc_curve, precision_recall_curve, confusion_matrix
+from sklearn.metrics import confusion_matrix
 
 from uncertify.evaluation.configs import EvaluationConfig, EvaluationResult, SliceAnomalyDetectionResult
 from uncertify.evaluation.thresholding import threshold_vs_fpr
 from uncertify.evaluation.thresholding import calculate_fpr_minus_accepted
-from uncertify.evaluation.model_performance import mean_std_dice_scores
+from uncertify.evaluation.model_performance import mean_std_dice_scores, calculate_roc, calculate_prc
 from uncertify.evaluation.model_performance import mean_std_iou_scores
 from uncertify.algorithms.golden_section_search import golden_section_search
 from uncertify.evaluation.waic import sample_wise_waic_scores
@@ -35,7 +35,7 @@ from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnoma
 from uncertify.evaluation.configs import OODDetectionResult, OODDetectionResults
 from uncertify.common import DATA_DIR_PATH
 
-from typing import Tuple, Iterable, List, Dict, Union
+from typing import Iterable, List, Dict, Union
 
 LOG = logging.getLogger(__name__)
 
@@ -223,28 +223,9 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
     return results
 
 
-def calculate_roc(y_true: Iterable, y_pred_proba: Iterable) -> Tuple[Iterable, Iterable, Iterable, float]:
-    """Calculate the roc curve for true labels and model predictions.
-    Returns:
-        (false_positive_rates, true_positive_rates, thresholds, area_under_roc_curve)
-    """
-    fpr, tpr, thresholds = roc_curve(y_true, y_pred_proba)
-    au_roc = roc_auc_score(y_true, y_pred_proba)
-    return fpr, tpr, thresholds, au_roc
-
-
-def calculate_prc(y_true: Iterable, y_pred_proba: Iterable) -> Tuple[Iterable, Iterable, Iterable, float]:
-    """Calculate the prc curve for true labels and model predictions.
-    Returns:
-        (precisions, recalls, thresholds, area_under_prc_curve)
-    """
-    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_proba)
-    au_prc = average_precision_score(y_true, y_pred_proba)
-    return precision, recall, thresholds, au_prc
-
-
 def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val_dataloader: DataLoader,
                              eval_cfg: EvaluationConfig, results: EvaluationResult) -> EvaluationResult:
+    """Produce loss term histograms and store in the output."""
     LOG.info('Producing model statistics histograms...')
     val_generator = yield_inference_batches(val_dataloader, model,
                                             residual_threshold=results.pixel_anomaly_result.best_threshold,
@@ -254,22 +235,20 @@ def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val
                                               residual_threshold=results.pixel_anomaly_result.best_threshold,
                                               max_batches=eval_cfg.use_n_batches,
                                               progress_bar_suffix='training set')
-
     if eval_cfg.do_plots:
         figs_axes = plot_loss_histograms(output_generators=[train_generator, val_generator],
                                          names=['Training Set', 'Validation Set'],  # TODO: Use dataset names
                                          figsize=(12, 6), ylabel='Normalized Frequency', plot_density=True,
                                          show_data_ticks=False, kde_bandwidth=[0.009, 0.009 * 5], show_histograms=False)
-
         for idx, (fig, _) in enumerate(figs_axes):
             fig.savefig(results.plot_dir_path / f'loss_term_distributions_{idx}.png')
-
     return results
 
 
 def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloader: DataLoader,
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
+    """Run complete OOD detection pipeline and populate the passed results object with the scores and metadata."""
     results.test_set_name = val_dataloader.dataset.name
     LOG.info(f'Running OOD detection performance on {results.test_set_name}...')
     min_length_dataloader = min(len(train_dataloader), len(val_dataloader))
@@ -308,8 +287,11 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                 # high DoSE score is in-distribution, thus revert
                 ood_dict[ood_key]['ood_scores'] = [-val for val in dose_scores]
                 ood_dict[ood_key]['is_lesional'] = dose_kde_dict['is_lesional']
+            # Make visible in results which statistics have been used
+            metric_name = '_'.join([metric_name, '-'.join(eval_cfg.ood_config.dose_statistics)])
         else:
-            raise ValueError(f'Should not happen. Wrong metric.')
+            raise ValueError(f'Should not happen. Metric not supported!')
+        # Update the results and create output plots
         ood_performance_(metric_name, ood_dict, eval_cfg, results)
     return results
 
@@ -421,6 +403,7 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
 
 
 def print_results(results: EvaluationResult) -> None:
+    """Print all results from a complete EvaluationResult object."""
     print('===== Evaluation Results =====')
     # Pixel-wise Anomaly Detection
     print('--- Pixel-wise Anomaly Detection ---')

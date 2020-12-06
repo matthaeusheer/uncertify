@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple, Optional, Iterable
 
 
 def compute_slice_wise_dose_kde_scores(model: nn.Module, test_dataloader: DataLoader,
-                                       kde_func_dict: Dict[str, gaussian_kde], statistics: List[str],
+                                       kde_func_dict: Dict[str, gaussian_kde], statistics: Tuple[str],
                                        max_n_batches: int = None) -> Dict[str, Optional[List[float]]]:
     """Computes the per-slice DoSE KDE scores which are simply the KDE fit values for inferred samples."""
     for stat_name in statistics:
@@ -43,7 +43,7 @@ def compute_slice_wise_dose_scores(dose_kde_dict: Dict[str, List[float]]) -> Lis
 
 
 def full_pipeline_slice_wise_dose_scores(train_dataloader: DataLoader, test_dataloader: DataLoader,
-                                         model: nn.Module, statistics: List[str], max_n_batches: int = None,
+                                         model: nn.Module, statistics: Tuple[str], max_n_batches: int = None,
                                          kde_func_dict: Dict[str, gaussian_kde] = None) -> Tuple[List[float],
                                                                                                  Dict[str, List[float]]]:
     """Run the whole DoSE pipeline to get slice-wise dose scores for samples from test_dataloader.
