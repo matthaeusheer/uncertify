@@ -26,9 +26,7 @@ from typing import Tuple, List
 
 DEFAULT_DATASET_NAME = 'brats17'
 DEFAULT_BRATS_ROOT_PATH = Path('/scratch/maheer/datasets/raw/BraTS2017/training')
-REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference'
-# HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_unbiased.nii.gz'
-# HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC420202_T1w_brain_mask.nii.gz'
+REFERENCE_DIR_PATH = DATA_DIR_PATH / 'reference' / 'CamCAN'
 
 HIST_REF_T1_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_unbiased.nii.gz'
 HIST_REF_T1_MASK_PATH = REFERENCE_DIR_PATH / 'sub-CC723197_T2w_brain_mask.nii.gz'

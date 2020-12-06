@@ -128,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         '--max-n-epochs',
+        type=int,
         default=100,
         help='The maximum number of epochs to train for.'
     )
