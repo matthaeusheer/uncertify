@@ -31,13 +31,17 @@ def plot_brats_batches(brats_dataloader: DataLoader, plot_n_batches: int, **kwar
     LOG.info('Plotting BraTS2017 Dataset [scan & segmentation]')
     for sample in islice(brats_dataloader, plot_n_batches):
         nrow_kwarg = {'nrow': kwargs.get('nrow')} if 'nrow' in kwargs.keys() else dict()
-        scan = 'Scan' if kwargs.get('uppercase_keys', False) else 'scan'
-        seg = 'Seg' if kwargs.get('uppercase_keys', False) else 'seg'
-        mask = 'Mask' if kwargs.get('uppercase_keys', False) else 'mask'
+        scan_key = 'Scan' if kwargs.get('uppercase_keys', False) else 'scan'
+        seg_key = 'Seg' if kwargs.get('uppercase_keys', False) else 'seg'
+        mask_key = 'Mask' if kwargs.get('uppercase_keys', False) else 'mask'
+
+        mask = torch.where(sample[mask_key], sample[mask_key].type(torch.FloatTensor), -3.5 * torch.ones_like(sample[scan_key]))
+        seg = torch.where(sample[seg_key].type(torch.BoolTensor), sample[seg_key].type(torch.FloatTensor), -3.5 * torch.ones_like(sample[scan_key]))
         grid = make_grid(
-            torch.cat((sample[scan].type(torch.FloatTensor),
-                       sample[seg].type(torch.FloatTensor),
-                       sample[mask].type(torch.FloatTensor)), dim=2),
+            torch.cat((sample[scan_key].type(torch.FloatTensor),
+                       seg.type(torch.FloatTensor),
+                       mask.type(torch.FloatTensor)),
+                      dim=2),
             padding=0, **nrow_kwarg)
         imshow_grid(grid, one_channel=True, plt_show=True, axis='off', **kwargs)
         plt.show()
