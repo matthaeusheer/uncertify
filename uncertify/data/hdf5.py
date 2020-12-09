@@ -4,7 +4,7 @@ from typing import List
 import h5py
 
 
-def print_dataset_information(dataset_paths: List[Path]) -> None:
+def print_dataset_information(dataset_paths: List[Path]) -> h5py.File:
     for path in dataset_paths:
         print(f'{path} does{" not " if not path.exists() else " "}exist!')
 

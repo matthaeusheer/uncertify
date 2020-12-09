@@ -103,8 +103,21 @@ def yield_inference_batches(data_loader: DataLoader,
             inference_result = trained_model(scan_batch, batch['mask'] if 'mask' in batch.keys() else None)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
-        # Do residual calculation and masking
-        mask_batch = batch['mask']
+        if 'mask' in batch.keys():
+            mask_batch = batch['mask']
+            result.mask = mask_batch
+            result.slice_wise_is_empty = torch.sum(mask_batch, axis=(1, 2, 3)).numpy() == 0
+        else:
+            mask_batch = torch.ones_like(batch['scan']) > 0
+            result.slice_wise_is_empty = np.zeros(len(mask_batch), dtype=bool)
+
+        if 'seg' in batch.keys():
+            result.segmentation = convert_segmentation_to_one_zero(batch['seg'])
+            result.slice_wise_is_lesional = (torch.sum(result.segmentation, axis=(1, 2, 3)) >
+                                             N_PIXEL_LESIONAL_THRESHOLD).numpy()
+        else:
+            result.slice_wise_is_lesional = np.zeros(len(batch['scan']), dtype=bool)
+
         scan_batch = mask_background_to_zero(scan_batch, mask_batch)
         rec_batch = mask_background_to_zero(rec_batch, mask_batch)
         residual_batch = mask_background_to_zero(residual_fn(rec_batch, scan_batch), mask_batch)
@@ -118,14 +131,6 @@ def yield_inference_batches(data_loader: DataLoader,
         if residual_threshold is not None:
             result.residual_threshold = residual_threshold
             result.residuals_thresholded = threshold_batch_to_one_zero(residual_batch, residual_threshold)
-        if 'seg' in batch.keys():
-            result.segmentation = convert_segmentation_to_one_zero(batch['seg'])
-            result.slice_wise_is_lesional = (torch.sum(result.segmentation, axis=(1, 2, 3)) >
-                                             N_PIXEL_LESIONAL_THRESHOLD).numpy()
-
-        if 'mask' in batch.keys():
-            result.mask = batch['mask']
-            result.slice_wise_is_empty = torch.sum(result.mask, axis=(1, 2, 3)).numpy() == 0
 
         for key, value in zip(['total_loss', 'mean_kld_div', 'mean_rec_err', 'kl_div', 'rec_err'],
                               [total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err]):
@@ -143,13 +148,12 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                               max_n_batches: int = None,
                               residual_threshold: float = None,
                               residual_fn: Callable = residual_l1) -> AnomalyInferenceScores:
-    """Yield flattened vectors over all (of max_n_batches, if not None) batches for y_true and y_pred.
+    """Computes and yields AnomalyInferenceScores, that is, pixel- and slice-wise anomaly prediction scores.
 
     For Args: see yield_reconstruction_batches. Similar.
 
     Returns:
-        a tuple of (y_true, anomaly_score) where the two entries are numpy arrays representing the true anomaly label
-        and the anomaly score (residual value) for each pixel within the brain mask
+        anomaly_scores: an AnomalyInferenceScores object which holds pixel- and slice-wise anomaly scores
     """
     # Initially empty scores objects to fill up subsequently
     anomaly_scores = AnomalyInferenceScores(pixel_wise=AnomalyScores(),

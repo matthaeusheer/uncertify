@@ -39,7 +39,7 @@ class PerformanceEvaluationConfig:
 @dataclass
 class OodEvaluationConfig:
     metrics: tuple = ('dose', )  # 'waic'
-    dose_statistics: tuple = ('elbo',) #, 'kl_div', 'elbo', 'entropy')  # ('rec_err', 'kl_div', 'elbo')
+    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo') #, 'kl_div', 'elbo', 'entropy')  # ('rec_err', 'kl_div', 'elbo')
 
 
 @dataclass
@@ -119,7 +119,9 @@ class EvaluationResult:
     run_dir: str = None
     plot_dir_name: str = 'plots'
     img_dir_name: str = 'images'
-    test_set_name: str = None
+    train_set_name: str = 'Train Set'
+    test_set_name: str = 'Test Set'
+    comments: List[str] = field(default_factory=list)
 
     @property
     def _current_run_number(self) -> int:
@@ -144,7 +146,6 @@ class EvaluationResult:
     def make_dirs(self) -> None:
         """Creates all output directories needed to story results."""
         (self.out_dir_path / self.run_dir_name).mkdir(parents=True)
-        LOG.info(f'Created evaluation run directory: {self.out_dir_path / self.run_dir_name}')
         for dir_path in {self.plot_dir_path, self.img_dir_path}:
             dir_path.mkdir()
 
@@ -166,7 +167,7 @@ class EvaluationResult:
     def img_dir_path(self) -> Path:
         return self.out_dir_path / self.run_dir_name / self.img_dir_name
 
-    def to_json(self) -> None:
+    def store_json(self) -> None:
         """Store the whole dataclass to disk (in out_dir_path) as a .json file."""
         out_file_path = Path(self.out_dir_path) / self.run_dir_name / f'evaluation_results_{self._current_run_number}.json'
         with open(out_file_path, 'w') as outfile:
