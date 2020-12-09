@@ -67,4 +67,3 @@ def full_pipeline_slice_wise_dose_scores(train_dataloader: DataLoader, test_data
     dose_kde_dict = compute_slice_wise_dose_kde_scores(model, test_dataloader, kde_func_dict, statistics, max_n_batches)
     dose_scores = compute_slice_wise_dose_scores(dose_kde_dict)
     return dose_scores, dose_kde_dict
-

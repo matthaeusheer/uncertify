@@ -43,7 +43,7 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ens
         run_numbers.append(results.run_number)
         run_ood_detection_performance(ensemble_models, train_dataloader, dataloader, eval_cfg, results)
         results.test_set_name = name
-        results.to_json()
+        results.store_json()
     if print_results_when_done:
         print_results_from_evaluation_dirs(eval_results_dir, run_numbers, print_results_only=True)
 

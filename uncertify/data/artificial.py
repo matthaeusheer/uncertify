@@ -16,6 +16,7 @@ class BrainGaussBlobDataset(UncertifyDataset):
         self._max_sample_tries = 100
         self._blob_weight = 1000
         self._std_min_max = (4, 10)
+        self._lesion_probability = 0.5
 
     @property
     def name(self) -> str:
@@ -27,9 +28,13 @@ class BrainGaussBlobDataset(UncertifyDataset):
     def __getitem__(self, idx) -> dict:
         item_dict = self._wrapped_dataset.__getitem__(idx)
         assert 'scan' in item_dict.keys(), f'Has no "scan" key - cannot wrap the dataset!'
+        # Add a Gaussian blob only with certain probability
+        seg = torch.zeros_like(item_dict['scan'])
+        if random.random() > self._lesion_probability:
+            item_dict['seg'] = seg
+            return item_dict
         # Add the gaussian blob onto the scan within the masked region.
         n_pixels_within_mask = torch.sum(item_dict['mask'])
-        seg = torch.zeros_like(item_dict['scan'])
         if n_pixels_within_mask > self._min_pixels_to_consider:
             image = item_dict['scan'][0]
             mask = item_dict['mask'][0]

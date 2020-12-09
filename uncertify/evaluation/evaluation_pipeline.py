@@ -12,6 +12,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix
+import matplotlib.pyplot as plt
 
 from uncertify.evaluation.configs import EvaluationConfig, EvaluationResult, SliceAnomalyDetectionResult
 from uncertify.evaluation.thresholding import threshold_vs_fpr
@@ -30,12 +31,12 @@ from uncertify.visualization.model_performance import plot_segmentation_performa
 from uncertify.visualization.model_performance import plot_confusion_matrix
 from uncertify.visualization.model_performance import plot_roc_curve, plot_precision_recall_curve
 from uncertify.visualization.model_performance import plot_multi_roc_curves, plot_multi_prc_curves
-from uncertify.visualization.histograms import plot_loss_histograms
+from uncertify.visualization.histograms import plot_loss_histograms, plot_multi_histogram
 from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnomalyDetectionResults
 from uncertify.evaluation.configs import OODDetectionResult, OODDetectionResults
 from uncertify.common import DATA_DIR_PATH
 
-from typing import Iterable, List, Dict, Union
+from typing import List, Dict, Union
 
 LOG = logging.getLogger(__name__)
 
@@ -44,19 +45,26 @@ OUT_DIR_PATH = DATA_DIR_PATH / 'evaluation'
 
 def run_evaluation_pipeline(model: nn.Module,
                             train_dataloader: DataLoader,
+                            train_dataset_name: str,
                             val_dataloader: DataLoader,
+                            val_dataset_name: str,
                             eval_cfg: EvaluationConfig,
                             best_threshold: float = None,
                             run_segmentation: bool = True,
                             run_anomaly_detection: bool = True,
-                            run_histograms: bool = True,
+                            run_loss_histograms: bool = True,
                             run_ood_detection: bool = True,
-                            ensemble_models: Iterable[nn.Module] = None) -> EvaluationResult:
+                            ensemble_models: List[nn.Module] = None,
+                            comments: list = None) -> EvaluationResult:
     """Main function which runs the complete evaluation pipeline for a trained model and a test dataset."""
     results = EvaluationResult(OUT_DIR_PATH, eval_cfg, PixelAnomalyDetectionResult(),
                                SliceAnomalyDetectionResults(), OODDetectionResults())
     results.make_dirs()
-    results.test_set_name = val_dataloader.dataset.name
+    results.train_set_name = train_dataset_name
+    results.test_set_name = val_dataset_name
+    if comments is not None:
+        results.comments.extend(comments)
+
     LOG.info(f'Evaluation run output: {results.out_dir_path / results.run_dir_name}')
 
     with torch.no_grad():
@@ -71,15 +79,14 @@ def run_evaluation_pipeline(model: nn.Module,
         if run_anomaly_detection:
             results = run_anomaly_detection_performance(eval_cfg, model, val_dataloader, results)
 
-        if run_histograms:
+        if run_loss_histograms:
             results = run_loss_term_histograms(model, train_dataloader, val_dataloader, eval_cfg, results)
 
         if run_ood_detection:
-            assert ensemble_models is not None, f'Need to provide list of ensemble models for WAIC OOD performance!'
-            results = run_ood_detection_performance(ensemble_models, train_dataloader, val_dataloader, eval_cfg,
-                                                    results)
+            results = run_ood_detection_performance(ensemble_models, train_dataloader, val_dataloader,
+                                                    eval_cfg, results)
 
-        results.to_json()
+        results.store_json()
 
         return results
 
@@ -191,6 +198,7 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
             confusion_matrix_fig, _ = plot_confusion_matrix(conf_matrix, categories=['normal', 'anomaly'],
                                                             cbar=False, cmap='YlOrRd_r', figsize=(6, 6))
             confusion_matrix_fig.savefig(results.plot_dir_path / 'pixel_wise_confusion_matrix.png')
+            plt.close(confusion_matrix_fig)
     # TODO: Calculate Recall, Precision, Accuracy, F1 score from confusion matrix.
 
     # Step 2 - Slice-wise anomaly detection
@@ -213,12 +221,14 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                      title=f'ROC Curve Sample-wise Anomaly Detection [{str(criteria.name)}]',
                                      figsize=(6, 6))
             roc_fig.savefig(results.plot_dir_path / f'sample_wise_roc_{str(criteria.name)}.png')
+            plt.close(roc_fig)
 
             prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
                                                   title=f'PR Curve Sample-wise Anomaly Detection '
                                                         f'[{str(criteria.name)}]',
                                                   figsize=(6, 6))
             prc_fig.savefig(results.plot_dir_path / f'sample_wise_prc_{str(criteria.name)}.png')
+            plt.close(prc_fig)
 
     return results
 
@@ -226,18 +236,20 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
 def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val_dataloader: DataLoader,
                              eval_cfg: EvaluationConfig, results: EvaluationResult) -> EvaluationResult:
     """Produce loss term histograms and store in the output."""
-    LOG.info('Producing model statistics histograms...')
-    val_generator = yield_inference_batches(val_dataloader, model,
-                                            residual_threshold=results.pixel_anomaly_result.best_threshold,
-                                            max_batches=eval_cfg.use_n_batches,
-                                            progress_bar_suffix='validation set')
-    train_generator = yield_inference_batches(train_dataloader, model,
-                                              residual_threshold=results.pixel_anomaly_result.best_threshold,
-                                              max_batches=eval_cfg.use_n_batches,
-                                              progress_bar_suffix='training set')
     if eval_cfg.do_plots:
+        LOG.info('Producing model loss-term statistics histograms...')
+        val_generator = yield_inference_batches(val_dataloader, model,
+                                                residual_threshold=results.pixel_anomaly_result.best_threshold,
+                                                max_batches=eval_cfg.use_n_batches,
+                                                progress_bar_suffix='loss-terms val set')
+        train_generator = yield_inference_batches(train_dataloader, model,
+                                                  residual_threshold=results.pixel_anomaly_result.best_threshold,
+                                                  max_batches=eval_cfg.use_n_batches,
+                                                  progress_bar_suffix='loss-terms train set')
+
         figs_axes = plot_loss_histograms(output_generators=[train_generator, val_generator],
-                                         names=['Training Set', 'Validation Set'],  # TODO: Use dataset names
+                                         names=[f'{results.train_set_name}',
+                                                f'{results.test_set_name}'],
                                          figsize=(12, 6), ylabel='Normalized Frequency', plot_density=True,
                                          show_data_ticks=False, kde_bandwidth=[0.009, 0.009 * 5], show_histograms=False)
         for idx, (fig, _) in enumerate(figs_axes):
@@ -249,26 +261,38 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
     """Run complete OOD detection pipeline and populate the passed results object with the scores and metadata."""
-    results.test_set_name = val_dataloader.dataset.name
-    LOG.info(f'Running OOD detection performance on {results.test_set_name}...')
     min_length_dataloader = min(len(train_dataloader), len(val_dataloader))
     use_n_batches = min(eval_cfg.use_n_batches, min_length_dataloader)
     supported_metrics = ['waic', 'dose']
-
     for metric_name in eval_cfg.ood_config.metrics:
         if metric_name not in supported_metrics:
             raise ValueError(f'Provided metric {metric_name} not supported ({supported_metrics})')
+        LOG.info(f'Running {metric_name} OOD detection performance on {results.test_set_name}...')
 
-        ood_dict = {'ood': {'ood_scores': [], 'is_lesional': []},
-                    'in_distribution': {'ood_scores': [], 'is_lesional': []}}
+        # For every metric, e.g. WAIC such an ood_dict gets created
         if metric_name == 'waic':
-            for ood_key, dataloader in zip(['ood', 'in_distribution'], [val_dataloader, train_dataloader]):
-                waic_scores, is_lesional, _ = sample_wise_waic_scores(model_ensemble, val_dataloader,
-                                                                      results.pixel_anomaly_result.best_threshold,
-                                                                      use_n_batches)
-                ood_dict[ood_key]['ood_scores'] = waic_scores
-                ood_dict[ood_key]['is_lesional'] = is_lesional
 
+            ood_results = {'ood': None, 'in_distribution': None}
+            for ood_key, dataloader in zip(['ood', 'in_distribution'], [val_dataloader, train_dataloader]):
+                ood_results[ood_key] = sample_wise_waic_scores(model_ensemble, dataloader, use_n_batches)
+
+            # When computing the WAIC score, we also add the elbo, kl_div and rec_error scores to the results :-)
+            for sub_metric in ['waic', 'elbo', 'kl_div', 'rec_err']:
+                ood_dict = {'ood': {'ood_scores': [], 'is_lesional': []},
+                            'in_distribution': {'ood_scores': [], 'is_lesional': []}}
+                for ood_key in ['ood', 'in_distribution']:
+                    if sub_metric == 'waic':
+                        scores = ood_results[ood_key].slice_wise_waic_scores
+                    elif sub_metric == 'elbo':
+                        scores = ood_results[ood_key].slice_wise_elbos
+                    elif sub_metric == 'rec_err':
+                        scores = ood_results[ood_key].slice_wise_rec_err
+                    elif sub_metric == 'kl_div':
+                        scores = ood_results[ood_key].slice_wise_kl_div
+                    is_lesional = ood_results[ood_key].slice_wise_is_lesional
+                    ood_dict[ood_key]['ood_scores'] = scores
+                    ood_dict[ood_key]['is_lesional'] = is_lesional
+                calculate_and_update_ood_performance(sub_metric, ood_dict, eval_cfg, results)
         elif metric_name == 'dose':
             model = model_ensemble[0]
             # First fit statistics on training data
@@ -276,6 +300,8 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                                                               eval_cfg.ood_config.dose_statistics,
                                                               max_n_batches=use_n_batches)
             kde_func_dict = fit_statistics(statistics_dict)
+            ood_dict = {'ood': {'ood_scores': [], 'is_lesional': []},
+                        'in_distribution': {'ood_scores': [], 'is_lesional': []}}
             # Then do DoSE score inference using the KDE fit functions for in- and out-of-distribution data
             for ood_key, dataloader in zip(['ood', 'in_distribution'], [val_dataloader, train_dataloader]):
                 dose_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(train_dataloader,
@@ -289,15 +315,16 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                 ood_dict[ood_key]['is_lesional'] = dose_kde_dict['is_lesional']
             # Make visible in results which statistics have been used
             metric_name = '_'.join([metric_name, '-'.join(eval_cfg.ood_config.dose_statistics)])
+            calculate_and_update_ood_performance(metric_name, ood_dict, eval_cfg, results)
         else:
             raise ValueError(f'Should not happen. Metric not supported!')
-        # Update the results and create output plots
-        ood_performance_(metric_name, ood_dict, eval_cfg, results)
+
     return results
 
 
-def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[float], List[bool]]]],
-                     eval_cfg: EvaluationConfig, results: EvaluationResult) -> None:
+def calculate_and_update_ood_performance(metric_name: str,
+                                         ood_dict: Dict[str, Dict[str, Union[List[float], List[bool]]]],
+                                         eval_cfg: EvaluationConfig, results: EvaluationResult) -> None:
     """Calculate OOD Detection performance, update results and create plots for given metric and ood_dict.
     Arguments
         metric_name: used to calculate the correct ood scores based on the metric
@@ -355,7 +382,8 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
     y_pred_proba_lesional.extend(random.sample(ood_scores, n_lesional_samples))
     y_true_lesional.extend(n_lesional_samples * [0.0])
 
-    y_pred_proba_healthy.extend(random.sample(ood_scores, n_healthy_samples))
+    # We can sample a maximum of len(ood_scores) samples from train data
+    y_pred_proba_healthy.extend(random.sample(ood_scores, min(n_healthy_samples, len(ood_scores))))
     y_true_healthy.extend(n_healthy_samples * [0.0])
 
     def calculate_ood_performance(mode: str, y_true: list, y_pred_proba: list) -> dict:
@@ -375,7 +403,7 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
         ood_result.metric = metric_
         results.ood_detection_results.results.append(ood_result)
 
-    # Will be filled for each mode ('all', 'healthy', 'lesional') with
+    # Will be filled with ood scores dict for each mode ('all', 'healthy', 'lesional') with
     metrics_dict = {}
     for mode, y_true, y_pred_proba in zip(['all', 'healthy', 'lesional'],
                                           [y_true_all, y_true_healthy, y_true_lesional],
@@ -386,6 +414,7 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
         update_results(scores, mode, metric_name)
         metrics_dict[mode] = scores
 
+    # ROC & PCR curves
     if eval_cfg.do_plots:
         labels = list(metrics_dict.keys())
         fprs = [score_dict['fpr'] for score_dict in metrics_dict.values()]
@@ -400,6 +429,32 @@ def ood_performance_(metric_name: str, ood_dict: Dict[str, Dict[str, Union[List[
                                         title=f'{metric_name} PR Curve OOD Detection', figsize=(6, 6))
         roc_fig.savefig(results.plot_dir_path / f'ood_roc_{metric_name}.png')
         prc_fig.savefig(results.plot_dir_path / f'ood_prc_{metric_name}.png')
+        plt.close(roc_fig)
+        plt.close(prc_fig)
+
+    # Slice-wise OOD score distributions
+    if eval_cfg.do_plots:
+        # ood healthy, ood lesional, in healthy
+        ood_scores_healthy = [score for idx, score in enumerate(y_pred_proba_healthy) if y_true_healthy[idx] == 1.0]
+        ood_scores_lesional = [score for idx, score in enumerate(y_pred_proba_lesional) if y_true_lesional[idx] == 1.0]
+        id_scores_healthy = [score for idx, score in enumerate(y_pred_proba_healthy) if y_true_healthy[idx] == 0.0]
+
+        arrays = []
+        labels = []
+        for scores_list, label in zip([ood_scores_healthy, ood_scores_lesional, id_scores_healthy],
+                                      [f'healthy OOD', f'lesional OOD', f'healthy in-distr.']):
+            if len(scores_list) > 0:
+                arrays.append(np.array(scores_list))
+                labels.append(label)
+
+        fig, _ = plot_multi_histogram(arrays,
+                                      labels,
+                                      show_data_ticks=False,
+                                      plot_density=False,
+                                      title=f'OOD scores {results.test_set_name}',
+                                      xlabel=f'{metric_name}')
+        fig.savefig(results.plot_dir_path / f'ood_scores_{metric_name}.png')
+        plt.close(fig)
 
 
 def print_results(results: EvaluationResult) -> None:

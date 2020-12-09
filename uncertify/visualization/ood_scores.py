@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import torchvision
 import numpy as np
 
@@ -9,8 +8,6 @@ from uncertify.utils.python_helpers import get_indices_of_n_largest_items, get_i
 from uncertify.utils.python_helpers import get_idx_of_closest_value
 from uncertify.visualization.grid import imshow_grid
 from uncertify.common import DATA_DIR_PATH
-
-from uncertify.utils.custom_types import Tensor
 
 LOG = logging.getLogger(__name__)
 

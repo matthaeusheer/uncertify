@@ -17,7 +17,7 @@ def plot_multi_histogram(arrays: List[np.ndarray],
                          labels: List[str] = None,
                          plot_density: bool = True,
                          kde_bandwidth: Union[float, List[float]] = 0.005,
-                         show_data_ticks: bool = True,
+                         show_data_ticks: bool = False,
                          hist_kwargs: dict = None,
                          **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
     """Create a figure with a histogram consisting multiple distinct distributions.
