@@ -59,7 +59,6 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
         else:
             for _ in range(batch_size):
                 slice_wise_seg_maps.append(torch.zeros_like(batch.scan[0]))
-
     # Apply indices mask to filter out empty slices or slices from other health state
     mask_slice_indices = [idx for idx, keep_slice in enumerate(slices_keep_mask) if keep_slice]
     statistics_dict = {key: [values[idx] for idx in mask_slice_indices] for key, values in statistics_dict.items()}
@@ -68,7 +67,6 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     slice_wise_seg_maps = [slice_wise_seg_maps[idx] for idx in mask_slice_indices]
     statistics_dict.update({'scans': slice_wise_scans})
     statistics_dict.update({'segmentations': slice_wise_seg_maps})
-
     return statistics_dict
 
 

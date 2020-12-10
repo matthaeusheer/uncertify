@@ -73,7 +73,7 @@ def yield_inference_batches(data_loader: DataLoader,
                             trained_model: torch.nn.Module,
                             max_batches: int = None,
                             residual_threshold: float = None,
-                            residual_fn: Callable = residual_l1_max,
+                            residual_fn: Callable = residual_l1,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
                             progress_bar_suffix: str = '') -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
@@ -180,17 +180,28 @@ def yield_anomaly_predictions(data_loader: DataLoader,
 
             # Step 2 - Slice-wise
             # Treat the loss term components as anomaly scores
-            slice_wise_kl_div = batch.kl_div
-            slice_wise_rec_error = batch.rec_err
-            slice_wise_elbo = -slice_wise_kl_div + slice_wise_rec_error
-            anomaly_scores.slice_wise['KL_TERM'].anomaly_score.y_pred_proba.extend(list(slice_wise_kl_div))
-            anomaly_scores.slice_wise['REC_TERM'].anomaly_score.y_pred_proba.extend(list(slice_wise_rec_error))
-            anomaly_scores.slice_wise['ELBO'].anomaly_score.y_pred_proba.extend(list(slice_wise_elbo))
-            # Get ground truth by checking number of marked pixels
-            slice_wise_n_abnormal_pixels = torch.sum(batch.segmentation > 0, axis=(1, 2, 3)).numpy()
-            slice_wise_is_abnormal = [count > N_PIXEL_LESIONAL_THRESHOLD for count in slice_wise_n_abnormal_pixels]
-            for criteria in SliceWiseCriteria:
-                anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.extend(slice_wise_is_abnormal)
+            slice_wise_elbo = list(-batch.kl_div + batch.rec_err)
+            slice_wise_kl_div = list(batch.kl_div)
+            slice_wise_rec_error = list(batch.rec_err)
+            slice_wise_is_empty = list(batch.slice_wise_is_empty)
+            slice_wise_n_lesional_pixels = torch.sum(batch.segmentation > 0, axis=(1, 2, 3)).numpy()
+            slice_wise_is_lesional = [count > N_PIXEL_LESIONAL_THRESHOLD for count in slice_wise_n_lesional_pixels]
+            for slice_idx, (is_empty, is_lesional, kl_div, rec_err, elbo) in enumerate(zip(slice_wise_is_empty,
+                                                                                           slice_wise_is_lesional,
+                                                                                           slice_wise_kl_div,
+                                                                                           slice_wise_rec_error,
+                                                                                           slice_wise_elbo)):
+                if is_empty:
+                    continue
+
+                # y_pred_proba
+                anomaly_scores.slice_wise['KL_TERM'].anomaly_score.y_pred_proba.append(kl_div)
+                anomaly_scores.slice_wise['REC_TERM'].anomaly_score.y_pred_proba.append(rec_err)
+                anomaly_scores.slice_wise['ELBO'].anomaly_score.y_pred_proba.append(elbo)
+
+                # y_true
+                for criteria in SliceWiseCriteria:
+                    anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.append(is_lesional)
     return anomaly_scores
 
 

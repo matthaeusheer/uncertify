@@ -97,12 +97,10 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
     """Search for best threshold given an accepted FPR and update the results dict."""
     thresh_cfg = eval_cfg.thresh_search_config
     pixel_thresholds = np.linspace(thresh_cfg.min_val, thresh_cfg.max_val, thresh_cfg.num_values)
-    LOG.info(f'Determining best residual threshold based on accepted FPR ({thresh_cfg.accepted_fpr}) '
+    LOG.info(f'Determining best residual threshold via Golden Section Search based on '
+             f'accepted FPR ({thresh_cfg.accepted_fpr:.2f}) '
              f'checking on pixel thresholds {list(pixel_thresholds)}...')
-    thresholds, train_false_positive_rates = threshold_vs_fpr(train_dataloader, model,
-                                                              thresholds=pixel_thresholds,
-                                                              use_ground_truth=False,
-                                                              n_batches_per_thresh=eval_cfg.use_n_batches)
+
     objective = partial(calculate_fpr_minus_accepted,
                         accepted_fpr=thresh_cfg.accepted_fpr,
                         data_loader=train_dataloader,
@@ -116,6 +114,11 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
                                            return_mean=True)
     results.best_threshold = best_threshold
     if eval_cfg.do_plots:
+        LOG.info(f'Producing plot for threshold search.')
+        thresholds, train_false_positive_rates = threshold_vs_fpr(train_dataloader, model,
+                                                                  thresholds=pixel_thresholds,
+                                                                  use_ground_truth=False,
+                                                                  n_batches_per_thresh=eval_cfg.use_n_batches)
         fpr_vs_threshold_fig = plot_fpr_vs_residual_threshold(accepted_fpr=thresh_cfg.accepted_fpr,
                                                               calculated_threshold=best_threshold,
                                                               thresholds=pixel_thresholds,
@@ -129,9 +132,9 @@ def run_segmentation_performance(eval_cfg: EvaluationConfig, results: Evaluation
                                  val_dataloader: DataLoader, model: nn.Module) -> EvaluationResult:
     perf_cfg = eval_cfg.seg_performance_config
     LOG.info(f'Running segmentation performance '
-             f'(residual threshold = {results.pixel_anomaly_result.best_threshold})...')
+             f'(residual threshold = {results.pixel_anomaly_result.best_threshold:.2f})')
 
-    # Calculate scores for all pixel thresholds
+    # Calculate scores for multiple pixel thresholds
     if perf_cfg.do_multiple_thresholds:
         pixel_thresholds = np.linspace(perf_cfg.min_val, perf_cfg.max_val, perf_cfg.num_values)
         LOG.info(f'Calculating segmentation (DICE / IOU) performance for residual thresholds: {list(pixel_thresholds)}')
@@ -159,7 +162,8 @@ def run_segmentation_performance(eval_cfg: EvaluationConfig, results: Evaluation
                                                                          eval_cfg.use_n_batches)
         results.pixel_anomaly_result.per_patient_dice_score_mean = best_mean_dice_score[0]
         results.pixel_anomaly_result.per_patient_dice_score_std = best_std_dice_score[0]
-
+        LOG.info(f'Calculated best dice score (t={results.pixel_anomaly_result.best_threshold:.2f}): '
+                 f'{best_mean_dice_score[0]:.2f} +- {best_std_dice_score[0]:.2f}')
     return results
 
 
@@ -179,6 +183,7 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
     precision, recall, threshs, au_prc = calculate_prc(y_true, y_pred_proba)
     results.pixel_anomaly_result.au_prc = au_prc
     results.pixel_anomaly_result.au_roc = au_roc
+    LOG.info(f'Pixel-wise anomaly detection performance: AUROC {au_roc}, AUPRC {au_prc}')
 
     if eval_config.do_plots:
         roc_fig = plot_roc_curve(fpr, tpr, au_roc,
@@ -193,12 +198,14 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                               title=f'PR Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
         prc_fig.savefig(results.plot_dir_path / 'pixel_wise_prc.png')
 
+        """
         if anomaly_scores.pixel_wise.y_pred is not None:
             conf_matrix = confusion_matrix(anomaly_scores.pixel_wise.y_true, anomaly_scores.pixel_wise.y_pred)
             confusion_matrix_fig, _ = plot_confusion_matrix(conf_matrix, categories=['normal', 'anomaly'],
                                                             cbar=False, cmap='YlOrRd_r', figsize=(6, 6))
             confusion_matrix_fig.savefig(results.plot_dir_path / 'pixel_wise_confusion_matrix.png')
             plt.close(confusion_matrix_fig)
+        """
     # TODO: Calculate Recall, Precision, Accuracy, F1 score from confusion matrix.
 
     # Step 2 - Slice-wise anomaly detection
@@ -215,6 +222,7 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
         anomaly_result_for_criteria.au_prc = au_prc
         anomaly_result_for_criteria.au_roc = au_roc
         results.slice_anomaly_results.results.append(anomaly_result_for_criteria)
+        LOG.info(f'Slice-wise anomaly detection metric {criteria.name}: AUROC {au_roc:.2f}, AUPRC {au_prc:.2f}')
 
         if eval_config.do_plots:
             roc_fig = plot_roc_curve(fpr, tpr, au_roc,
