@@ -36,7 +36,8 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
     """
     result_generator = yield_inference_batches(data_loader, model,
                                                residual_threshold=threshold,
-                                               max_batches=n_batches_per_thresh)
+                                               max_batches=n_batches_per_thresh,
+                                               progress_bar_suffix=f'(FPR, t={threshold:.3f})')
     per_batch_fpr = []
     if n_batches_per_thresh is not None:
         result_generator = itertools.islice(result_generator, n_batches_per_thresh)

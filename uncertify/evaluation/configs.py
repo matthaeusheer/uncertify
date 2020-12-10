@@ -16,13 +16,13 @@ LOG = logging.getLogger(__name__)
 class PixelThresholdSearchConfig:
     # Accepted false positive rate when searching for threshold
     accepted_fpr: float = 0.1
-    # Min, max, and number of values for fpr vs threshold calculations
-    min_val: float = 0.0
-    max_val: float = 3.0
-    num_values: int = 7
+    # Min, max, and number of values for fpr vs threshold calculations for plotting
+    min_val: float = 0.5
+    max_val: float = 2.0
+    num_values: int = 10
     # Subsequent Golden Section Search parameters
     gss_lower_val: float = 0.0
-    gss_upper_val: float = 10.0
+    gss_upper_val: float = 2.00
     gss_tolerance: float = 0.001
 
 
@@ -60,8 +60,8 @@ class AnomalyDetectionResult:
     au_roc: float = None
 
     def __str__(self) -> str:
-        au_roc_formatted = f'{self.au_roc:.2f}' if self.au_roc else None
-        au_prc_formatted = f'{self.au_prc:.2f}' if self.au_prc else None
+        au_roc_formatted = f'{self.au_roc:.3f}' if self.au_roc else None
+        au_prc_formatted = f'{self.au_prc:.3f}' if self.au_prc else None
         return f'AU_ROC {au_roc_formatted}, AU_PRC: {au_prc_formatted}'
 
 
@@ -76,7 +76,7 @@ class PixelAnomalyDetectionResult(AnomalyDetectionResult):
 
     def __str__(self) -> str:
         return f'{super().__str__()}, Dice(mean/std): ' \
-               f'({self.per_patient_dice_score_mean:.2f}, {self.per_patient_dice_score_std:.2f}) '
+               f'({self.per_patient_dice_score_mean:.3f}, {self.per_patient_dice_score_std:.3f}) '
 
 
 @dataclass
@@ -88,7 +88,6 @@ class OODDetectionResult(AnomalyDetectionResult):
 @dataclass
 class OODDetectionResults:
     results: List[OODDetectionResult] = field(default_factory=list)
-    ood_dataset_name: str = None
 
 
 @dataclass
