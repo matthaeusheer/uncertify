@@ -60,7 +60,9 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
             if (batch_idx + 1) % 50 == 0:
                 LOG.info(f'Threshold: {threshold:.2f} - {batch_idx + 1} of '
                          f'{n_batches_per_thresh if n_batches_per_thresh is not None else "all"} batches done.')
-    return float(np.mean(per_batch_fpr))
+    mean_fpr = float(np.mean(per_batch_fpr))
+    LOG.info(f'Mean FPR: {mean_fpr:.2f} for t={threshold:.2f} (use_ground_truth=False)')
+    return mean_fpr
 
 
 def calculate_fpr_minus_accepted(threshold: float, data_loader: DataLoader, model: torch.nn.Module, accepted_fpr: float,

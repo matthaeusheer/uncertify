@@ -75,11 +75,15 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
         for name, test_data_loader in test_dataloader_dict.items():
             LOG.info(f'{metric} ODD score calculation for {name}')
             if metric == 'waic':
-                slice_wise_ood_scores, slice_wise_is_lesional, scans = sample_wise_waic_scores(models=ensemble_models,
-                                                                                               data_loader=test_data_loader,
-                                                                                               max_n_batches=num_batches,
-                                                                                               return_slices=True)
-                segmentations = None
+                waic_results = sample_wise_waic_scores(models=ensemble_models,
+                                                       data_loader=test_data_loader,
+                                                       max_n_batches=num_batches,
+                                                       return_slices=True)
+                scans = waic_results.slice_wise_scans
+                slice_wise_ood_scores = waic_results.slice_wise_waic_scores
+                slice_wise_is_lesional = waic_results.slice_wise_is_lesional
+                segmentations = waic_results.slice_wise_segmentations
+                masks = waic_results.slice_wise_masks
             elif metric == 'dose':
                 slice_wise_ood_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(train_dataloader,
                                                                                             test_data_loader,
@@ -90,6 +94,7 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                 slice_wise_is_lesional = dose_kde_dict['is_lesional']
                 scans = dose_kde_dict['scans']
                 segmentations = dose_kde_dict['segmentations']
+                masks = dose_kde_dict['masks']
             else:
                 raise ValueError(f'Requested OOD metric {metric} not supported.')
 
@@ -125,6 +130,7 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                             dose_kde_healthy[statistic].append(dose_kde_dict[statistic][idx])
 
             dataset_ood_dict = {'all': slice_wise_ood_scores,
+                                'masks': masks,
                                 'healthy': healthy_scores,
                                 'lesional': lesional_scores,
                                 'healthy_scans': healthy_scans,

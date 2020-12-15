@@ -1,16 +1,15 @@
 from collections import defaultdict
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 from sklearn.neighbors import KernelDensity
+import matplotlib.pyplot as plt
 
 from uncertify.visualization.plotting import setup_plt_figure
-from uncertify.utils.custom_types import Tensor
 from uncertify.evaluation.inference import BatchInferenceResult
 
 from typing import Tuple, List, Iterable, Generator, Dict, Union
 
-DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=True, bins=30)
+DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=False, bins=30)
 
 
 def plot_multi_histogram(arrays: List[np.ndarray],
@@ -19,6 +18,7 @@ def plot_multi_histogram(arrays: List[np.ndarray],
                          kde_bandwidth: Union[float, List[float]] = 0.005,
                          show_data_ticks: bool = False,
                          hist_kwargs: dict = None,
+                         separate_legend_fig: bool = False,
                          **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
     """Create a figure with a histogram consisting multiple distinct distributions.
     Args:
@@ -50,8 +50,13 @@ def plot_multi_histogram(arrays: List[np.ndarray],
                             label=labels[idx] if labels is not None else None)
             if show_data_ticks:
                 ax.plot(array, np.full_like(array, -0.01), '|', c=colors[idx], markeredgewidth=1)
+
     if labels is not None:
-        ax.legend(loc='best' if 'legend_pos' not in plt_kwargs.keys() else plt_kwargs.get('legend_pos'),
+        # Shrink current axis by 40%
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+        # Put a legend to the right of the current axis
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5),
                   title=plt_kwargs.get('legend_title', None), frameon=False)
     return fig, ax
 
@@ -84,7 +89,7 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
                         continue
                     # abnormal_fraction = n_abnormal_pixels / n_normal_pixels
                     is_abnormal = n_abnormal_pixels > 20  # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
-                    suffix = 'abnormal' if is_abnormal else 'normal'
+                    suffix = 'lesional' if is_abnormal else 'healthy'
                     kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
                     rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
                     elbos[f' '.join([generator_name, suffix])].append(float(rec_err-kl_div))
@@ -110,10 +115,11 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
         elbo_labels.append(name)
     kde_bandwidth = kwargs.get('kde_bandwidth', None)
     kwargs.pop('kde_bandwidth')
-    fig1, ax2 = plot_multi_histogram(kld_arrays, kld_labels, xlabel='KL Divergence',
-                                     kde_bandwidth=kde_bandwidth[0], **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, rec_labels, xlabel='Reconstruction Error',
+    # Add labels if you want to include them in some histogram plot instead of None
+    fig1, ax2 = plot_multi_histogram(kld_arrays, labels=None, xlabel='$D_{KL}$',
+                                     kde_bandwidth=kde_bandwidth[0], separate_legend_fig=True, **kwargs)
+    fig2, ax2 = plot_multi_histogram(rec_arrays, labels=None, xlabel='$\ell_{1}$',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)
-    fig3, ax3 = plot_multi_histogram(elbo_arrays, elbo_labels, xlabel='ELBO',
+    fig3, ax3 = plot_multi_histogram(elbo_arrays, labels=elbo_labels, xlabel='$\mathcal{L}$',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)
     return [(fig1, ax2), (fig2, ax2), (fig3, ax3)]

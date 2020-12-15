@@ -31,10 +31,12 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     slice_wise_scans = []  # track scans for later visualization
     slices_keep_mask = []  # the indices mask which decides which slices we keep
     slice_wise_seg_maps = []
+    slice_wise_masks = []
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
                                                               progress_bar_suffix=f'(slice statistics '
                                                                                   f'{data_loader.dataset.name})')):
         batch_size, _, _, _ = batch.scan.shape
+
         # Track which slices we keep based on slice health state and emptiness of brain mask
         health_state_mask = define_health_state_mask(health_state, batch)
         is_not_empty_mask = np.invert(batch.slice_wise_is_empty)
@@ -51,6 +53,8 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
             statistics_dict[statistic].extend(list(STATISTICS_FUNCTIONS[statistic](batch)))
 
         # Track scans and potentially ground truth segmentation for visualizations later on
+        for mask in batch.mask:
+            slice_wise_masks.append(mask)
         for scan in batch.scan:
             slice_wise_scans.append(scan)
         if batch.segmentation is not None:
@@ -59,14 +63,19 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
         else:
             for _ in range(batch_size):
                 slice_wise_seg_maps.append(torch.zeros_like(batch.scan[0]))
-    # Apply indices mask to filter out empty slices or slices from other health state
-    mask_slice_indices = [idx for idx, keep_slice in enumerate(slices_keep_mask) if keep_slice]
-    statistics_dict = {key: [values[idx] for idx in mask_slice_indices] for key, values in statistics_dict.items()}
 
-    slice_wise_scans = [slice_wise_scans[idx] for idx in mask_slice_indices]
-    slice_wise_seg_maps = [slice_wise_seg_maps[idx] for idx in mask_slice_indices]
+    # Apply indices mask to filter out empty slices or slices from other health state
+    keep_slice_indices = [idx for idx, keep_slice_flag in enumerate(slices_keep_mask) if keep_slice_flag]
+    statistics_dict = {key: [values[idx] for idx in keep_slice_indices] for key, values in statistics_dict.items()}
+
+    # Add metadata keys
+    slice_wise_masks = [slice_wise_masks[idx] for idx in keep_slice_indices]
+    slice_wise_scans = [slice_wise_scans[idx] for idx in keep_slice_indices]
+    slice_wise_seg_maps = [slice_wise_seg_maps[idx] for idx in keep_slice_indices]
     statistics_dict.update({'scans': slice_wise_scans})
     statistics_dict.update({'segmentations': slice_wise_seg_maps})
+    statistics_dict.update({'masks': slice_wise_masks})
+
     return statistics_dict
 
 
@@ -109,6 +118,14 @@ def fit_statistics(statistics_dict: Dict[str, List[float]]) -> Dict[str, gaussia
     return kde_func_dict
 
 
+def statistics_dict_to_df(statistics_dict: dict, filter_out_empty: bool = True) -> pd.DataFrame:
+    """Conversion function from statistics dict to pandas DataFrame."""
+    df = pd.DataFrame.from_dict(statistics_dict)
+    if filter_out_empty:
+        df = df.loc[np.invert(df.is_empty)]
+    return df
+
+
 """
 The following functions all adhere to the same function interface. They return batch-wise statistics as numpy arrays.
 """
@@ -126,19 +143,38 @@ def elbo_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
     return -batch.kl_div + batch.rec_err
 
 
-def rec_error_entropy_batch_stat(batch: BatchInferenceResult) -> np.ndarray:
+def rec_error_entropy_batch_stat(batch: BatchInferenceResult, normalize_kind: str = 'sum') -> np.ndarray:
     """Calculates the slice-wise entropy of normalized l1 residual images."""
-    # Residual = residual_l1_max
+    # Residual = residual_l1
     residual_batch = batch.residual
     batch_size, _, _, _ = residual_batch.shape
     # Normalization
-    slice_wise_sum = torch.sum(residual_batch, dim=(1, 2, 3))
-    for slice_idx in range(batch_size):
-        residual_batch[slice_idx] /= slice_wise_sum[slice_idx]
+    if normalize_kind is not None:
+        if normalize_kind == 'sum':
+            slice_wise_sum = torch.sum(residual_batch, dim=(1, 2, 3))
+            for slice_idx in range(batch_size):
+                residual_batch[slice_idx] /= slice_wise_sum[slice_idx]
+        elif normalize_kind == 'softmax':
+            normalized = torch.zeros_like(residual_batch)
+            _, _, height, width = residual_batch.shape
+            for slice_idx, img in enumerate(residual_batch):
+                softmax_slice_vec = torch.softmax(img[0].flatten(), dim=0)
+                softmax_slice = torch.reshape(softmax_slice_vec, shape=(height, width))
+                normalized[slice_idx][0] = softmax_slice
+            residual_batch = normalized
+        else:
+            raise ValueError(f'Normalization strategy {normalize_kind} not supported.')
     # Calculate entropy per slice
     entropy_array = np.empty(batch_size)
-    for idx, image in enumerate(residual_batch):
-        entropy_array[idx] = get_entropy(image[0])
+    maximal_indices = []
+    for idx, (image, mask) in enumerate(zip(residual_batch, batch.mask)):
+        if torch.sum(mask) > 10:
+            entropy_array[idx] = get_entropy(image[0], mask[0])  # Use first (only) channel
+        else:
+            maximal_indices.append(idx)
+    # For empty mask images, set entropy to maximum entropy encountered in batch
+    max_entropy = min(entropy_array)
+    entropy_array[maximal_indices] = max_entropy
     return entropy_array
 
 
@@ -154,17 +190,14 @@ STATISTICS_FUNCTIONS = {
 }
 
 
-def get_entropy(image: Tensor) -> float:
-    """Calculate the standard entropy by considering all pixel values as a probability distribution."""
+def get_entropy(image: Tensor, mask: Tensor) -> float:
+    """Calculate the normalized Shannon entropy for a single image (residual map)."""
+    # entropy = Categorical(image[mask]).entropy()  # the pytorch way without normalization
+    eps = 1e-5
+    n_masked_pixels = torch.sum(mask)
+    masked_pixels = image[mask]
     entropy = 0.0
-    for pix in image[image > 0.0].flatten():
-        entropy -= float(pix) * math.log2(float(pix))
+    for pix in masked_pixels:
+        entropy -= (float(pix) * math.log2(float(pix) + eps)) / math.log2(n_masked_pixels)
     return entropy
 
-
-def statistics_dict_to_df(statistics_dict: dict, filter_out_empty: bool = True) -> pd.DataFrame:
-    """Conversion function from statistics dict to pandas DataFrame."""
-    df = pd.DataFrame.from_dict(statistics_dict)
-    if filter_out_empty:
-        df = df.loc[np.invert(df.is_empty)]
-    return df
