@@ -6,13 +6,15 @@ from torch.utils.data import DataLoader
 from uncertify.evaluation.statistics import aggregate_slice_wise_statistics, fit_statistics
 from uncertify.evaluation.statistics import STATISTICS_FUNCTIONS
 
-from typing import List, Dict, Tuple, Optional, Iterable
+from typing import List, Dict, Tuple, Optional
 
 
 def compute_slice_wise_dose_kde_scores(model: nn.Module, test_dataloader: DataLoader,
                                        kde_func_dict: Dict[str, gaussian_kde], statistics: Tuple[str],
                                        max_n_batches: int = None) -> Dict[str, Optional[List[float]]]:
-    """Computes the per-slice DoSE KDE scores which are simply the KDE fit values for inferred samples."""
+    """Computes the per-slice DoSE KDE scores which are simply the KDE fit values for inferred samples.
+    Note: Additionally to Dose_KDE scores, also lesional bools and scans/masks/segmentations are passed along.
+    """
     for stat_name in statistics:
         if stat_name not in kde_func_dict.keys():
             raise ValueError(f'Attempting to test for statistic for which we have no KDE fit. Fitted statistics '
@@ -27,15 +29,20 @@ def compute_slice_wise_dose_kde_scores(model: nn.Module, test_dataloader: DataLo
     for stat_name, test_stat_values in filtered_test_stat_dict.items():
         kde_values = kde_func_dict[stat_name](test_stat_values)
         dose_kde_dict[stat_name] = kde_values
+
+    # Pass along some metadata
     dose_kde_dict.update({'is_lesional': test_stat_dict['is_lesional']})
     dose_kde_dict.update({'scans': test_stat_dict['scans']})
     dose_kde_dict.update({'segmentations': test_stat_dict['segmentations']})
+    dose_kde_dict.update({'masks': test_stat_dict['masks']})
+
     return dose_kde_dict
 
 
 def compute_slice_wise_dose_scores(dose_kde_dict: Dict[str, List[float]]) -> List[float]:
     """Construct KDE score by summing up the different KDE fit values for a sample."""
     slice_wise_dose_scores = []
+    # Loop over slices, dose_kde_values is a collection of all Dose_KDE values for a slice
     for dose_kde_values in zip(*{key: values for key, values in dose_kde_dict.items()
                                  if key in STATISTICS_FUNCTIONS.keys()}.values()):
         slice_wise_dose_scores.append(sum(dose_kde_values))

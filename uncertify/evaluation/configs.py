@@ -15,7 +15,7 @@ LOG = logging.getLogger(__name__)
 @dataclass
 class PixelThresholdSearchConfig:
     # Accepted false positive rate when searching for threshold
-    accepted_fpr: float = 0.1
+    accepted_fpr: float = 0.05
     # Min, max, and number of values for fpr vs threshold calculations for plotting
     min_val: float = 0.5
     max_val: float = 2.0
@@ -81,7 +81,7 @@ class PixelAnomalyDetectionResult(AnomalyDetectionResult):
 
 @dataclass
 class OODDetectionResult(AnomalyDetectionResult):
-    mode: str = None  # can be 'combo', 'lesional', 'healthy'
+    mode: str = None  # can be 'all', 'lesional', 'healthy'
     metric: str = None  # e.g. WAIC or DoSE
 
 

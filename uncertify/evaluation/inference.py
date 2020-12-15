@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from uncertify.evaluation.utils import threshold_batch_to_one_zero, convert_segmentation_to_one_zero
 from uncertify.evaluation.utils import residual_l1, residual_l1_max, mask_background_to_zero
+from uncertify.evaluation.median_pool import MedianPool2d
 from uncertify.utils.custom_types import Tensor
 
 from typing import Generator, Callable, List, Dict
@@ -67,6 +68,7 @@ class AnomalyInferenceScores:
 
 
 N_PIXEL_LESIONAL_THRESHOLD = 20
+MEDIAN_FILTER = MedianPool2d(kernel_size=5, padding=2)
 
 
 def yield_inference_batches(data_loader: DataLoader,
@@ -75,6 +77,7 @@ def yield_inference_batches(data_loader: DataLoader,
                             residual_threshold: float = None,
                             residual_fn: Callable = residual_l1,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
+                            do_median_filter: bool = True,
                             progress_bar_suffix: str = '') -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
 
@@ -85,6 +88,7 @@ def yield_inference_batches(data_loader: DataLoader,
         residual_threshold: pixels with a higher value than this in the residual image are marked as abnormal
         residual_fn: function defining the way we define the residual image / batch
         get_batch_fn: function to get the input (scan) batch tensor from the input batch of the dataloader
+        do_median_filter: smoothing the residual map
         progress_bar_suffix: possibility to add some informative stuff to the progress bar during inference
 
     Returns:
@@ -118,9 +122,11 @@ def yield_inference_batches(data_loader: DataLoader,
         else:
             result.slice_wise_is_lesional = np.zeros(len(batch['scan']), dtype=bool)
 
-        scan_batch = mask_background_to_zero(scan_batch, mask_batch)
-        rec_batch = mask_background_to_zero(rec_batch, mask_batch)
-        residual_batch = mask_background_to_zero(residual_fn(rec_batch, scan_batch), mask_batch)
+        residual_batch = residual_fn(rec_batch, scan_batch)
+
+        if do_median_filter:
+            with torch.no_grad():
+                residual_batch = MEDIAN_FILTER(residual_batch.cuda()).cpu()
 
         # Fill output container
         result.scan = scan_batch
@@ -147,7 +153,7 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                               trained_model: torch.nn.Module,
                               max_n_batches: int = None,
                               residual_threshold: float = None,
-                              residual_fn: Callable = residual_l1) -> AnomalyInferenceScores:
+                              residual_fn: Callable = residual_l1_max) -> AnomalyInferenceScores:
     """Computes and yields AnomalyInferenceScores, that is, pixel- and slice-wise anomaly prediction scores.
 
     For Args: see yield_reconstruction_batches. Similar.

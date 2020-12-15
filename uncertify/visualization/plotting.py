@@ -9,7 +9,11 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 LOG = logging.getLogger(__name__)
 
 
-DEFAULT_SAVE_FIG_KWARGS = dict(bbox_inches='tight', pad_inches=0, dpi=300)
+DEFAULT_SAVE_FIG_KWARGS = dict(dpi=600, transparent=True, bbox_inches='tight')
+
+matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
+matplotlib.rcParams.update({'font.size': 22})
+plt.rcParams['axes.linewidth'] = 2
 
 
 def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
@@ -19,17 +23,13 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         figsize: Tuple(float, float), width and height in inches, defaults to (6.4, 4.8)
         title: str, sets the center title for the figures axes
     """
-    font = {'family': 'normal',
-            'weight': 'bold',
-            'size': 15}
-    matplotlib.rc('font', **font)
     if 'figsize' in kwargs:
         fig = plt.figure(figsize=kwargs.get('figsize'))
     else:
         fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
     if 'title' in kwargs:
-        ax.set_title(kwargs.get('title'), fontweight='bold')
+        ax.set_title(kwargs.get('title'))
     if 'aspect' in kwargs:
         ax.set_aspect(kwargs.get('aspect'))
     else:
@@ -37,9 +37,12 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
     if 'axis' in kwargs:
         ax.axis(kwargs.get('axis'))
     if 'xlabel' in kwargs:
-        ax.set_xlabel(kwargs.get('xlabel'), fontweight='bold')
+        ax.set_xlabel(kwargs.get('xlabel'))
     if 'ylabel' in kwargs:
-        ax.set_ylabel(kwargs.get('ylabel'), fontweight='bold')
+        ax.set_ylabel(kwargs.get('ylabel'))
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    plt.tight_layout()
     return fig, ax
 
 

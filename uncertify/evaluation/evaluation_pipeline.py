@@ -96,11 +96,8 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
                                       results: EvaluationResult) -> EvaluationResult:
     """Search for best threshold given an accepted FPR and update the results dict."""
     thresh_cfg = eval_cfg.thresh_search_config
-    pixel_thresholds = np.linspace(thresh_cfg.min_val, thresh_cfg.max_val, thresh_cfg.num_values)
-    LOG.info(f'Determining best residual threshold via Golden Section Search based on '
-             f'accepted FPR ({thresh_cfg.accepted_fpr:.2f}) '
-             f'checking on pixel thresholds {list(pixel_thresholds)}...')
 
+    # Find best threshold via GSS search
     objective = partial(calculate_fpr_minus_accepted,
                         accepted_fpr=thresh_cfg.accepted_fpr,
                         data_loader=train_dataloader,
@@ -113,8 +110,13 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
                                            tolerance=thresh_cfg.gss_tolerance,
                                            return_mean=True)
     results.best_threshold = best_threshold
+
+    # Create threshold plots
     if eval_cfg.do_plots:
-        LOG.info(f'Producing plot for threshold search.')
+        pixel_thresholds = np.linspace(thresh_cfg.min_val, thresh_cfg.max_val, thresh_cfg.num_values)
+        LOG.info(f'Producing FPR vs residual threshold plots with '
+                 f'accepted FPR ({thresh_cfg.accepted_fpr:.2f}) '
+                 f'checking on pixel thresholds {list(pixel_thresholds)}...')
         thresholds, train_false_positive_rates = threshold_vs_fpr(train_dataloader, model,
                                                                   thresholds=pixel_thresholds,
                                                                   use_ground_truth=False,
@@ -198,7 +200,7 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                               title=f'PR Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
         prc_fig.savefig(results.plot_dir_path / 'pixel_wise_prc.png')
 
-        """
+        """ Buggy :-(
         if anomaly_scores.pixel_wise.y_pred is not None:
             conf_matrix = confusion_matrix(anomaly_scores.pixel_wise.y_true, anomaly_scores.pixel_wise.y_pred)
             confusion_matrix_fig, _ = plot_confusion_matrix(conf_matrix, categories=['normal', 'anomaly'],
@@ -258,7 +260,7 @@ def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val
         figs_axes = plot_loss_histograms(output_generators=[train_generator, val_generator],
                                          names=[f'{results.train_set_name}',
                                                 f'{results.test_set_name}'],
-                                         figsize=(12, 6), ylabel='Normalized Frequency', plot_density=True,
+                                         figsize=(15, 6), ylabel='Frequency', plot_density=True,
                                          show_data_ticks=False, kde_bandwidth=[0.009, 0.009 * 5], show_histograms=False)
         for idx, (fig, _) in enumerate(figs_axes):
             fig.savefig(results.plot_dir_path / f'loss_term_distributions_{idx}.png')
