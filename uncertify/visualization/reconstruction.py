@@ -25,7 +25,7 @@ MAX_VAL = 2
 
 
 def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInferenceResult, None, None],
-                                             plot_n_batches: int = 3, nrow: int = 8,
+                                             plot_n_batches: int = 3, nrow: int = 8, show_mask: bool = False,
                                              save_dir_path: Path = None, **kwargs) -> None:
     """Plot the scan and reconstruction batches. Horizontally aligned are the samples from one batch.
     Vertically aligned are input image, ground truth segmentation, reconstruction, residual image, residual with
@@ -35,6 +35,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
         plot_n_batches: limit plotting to this amount of batches
         save_dir_path: path to directory in which to store the resulting plots - will be created if not existent
         nrow: numbers of samples in one row, default is 8
+        show_mask: plots the brain mask
         kwargs: additional keyword arguments for plotting functions
     """
     if save_dir_path is not None:
@@ -42,9 +43,11 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
     with torch.no_grad():
         for batch_idx, batch in enumerate(itertools.islice(batch_generator, plot_n_batches)):
             mask = batch.mask
+            max_val = torch.max(batch.scan)
+            min_val = torch.min(batch.scan)
 
-            scan = normalize_to_0_1(batch.scan)
-            reconstruction = normalize_to_0_1(batch.reconstruction)
+            scan = normalize_to_0_1(batch.scan, min_val, max_val)
+            reconstruction = normalize_to_0_1(batch.reconstruction, min_val, max_val)
             residual = normalize_to_0_1(batch.residual)
             thresholded = batch.residuals_thresholded
 
@@ -58,6 +61,8 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
                 stacked = torch.cat((scan, seg, reconstruction, residual, thresholded), dim=2)
             else:
                 stacked = torch.cat((scan, reconstruction, residual, thresholded), dim=2)
+            if show_mask:
+                stacked = torch.cat((stacked, mask.type(torch.FloatTensor)), dim=2)
             grid = torchvision.utils.make_grid(stacked, padding=0, normalize=False, nrow=nrow)
             describe = scipy.stats.describe(grid.numpy().flatten())
             print_scipy_stats_description(describe, 'normalized_grid')

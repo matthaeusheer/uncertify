@@ -11,6 +11,7 @@ from tqdm import tqdm
 from uncertify.evaluation.utils import threshold_batch_to_one_zero, convert_segmentation_to_one_zero
 from uncertify.evaluation.utils import residual_l1, residual_l1_max, mask_background_to_zero
 from uncertify.evaluation.median_pool import MedianPool2d
+from uncertify.evaluation.post_processing import BinaryErosion
 from uncertify.utils.custom_types import Tensor
 
 from typing import Generator, Callable, List, Dict
@@ -68,16 +69,16 @@ class AnomalyInferenceScores:
 
 
 N_PIXEL_LESIONAL_THRESHOLD = 20
-MEDIAN_FILTER = MedianPool2d(kernel_size=5, padding=2)
 
 
 def yield_inference_batches(data_loader: DataLoader,
                             trained_model: torch.nn.Module,
                             max_batches: int = None,
                             residual_threshold: float = None,
-                            residual_fn: Callable = residual_l1,
+                            residual_fn: Callable = residual_l1_max,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
-                            do_median_filter: bool = True,
+                            median_filter: MedianPool2d = MedianPool2d(kernel_size=5, padding=2),
+                            mask_eroder: BinaryErosion = BinaryErosion(num_iterations=3),
                             progress_bar_suffix: str = '') -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
 
@@ -88,7 +89,8 @@ def yield_inference_batches(data_loader: DataLoader,
         residual_threshold: pixels with a higher value than this in the residual image are marked as abnormal
         residual_fn: function defining the way we define the residual image / batch
         get_batch_fn: function to get the input (scan) batch tensor from the input batch of the dataloader
-        do_median_filter: smoothing the residual map
+        median_filter: if filter provided, does smooth the residual map
+        mask_eroder: erode brain mask inwards to get rid of false positive pixel anomalies on the brain edges
         progress_bar_suffix: possibility to add some informative stuff to the progress bar during inference
 
     Returns:
@@ -123,10 +125,12 @@ def yield_inference_batches(data_loader: DataLoader,
             result.slice_wise_is_lesional = np.zeros(len(batch['scan']), dtype=bool)
 
         residual_batch = residual_fn(rec_batch, scan_batch)
+        if mask_eroder is not None:
+            residual_batch *= mask_eroder(mask_batch.numpy())
 
-        if do_median_filter:
+        if median_filter is not None:
             with torch.no_grad():
-                residual_batch = MEDIAN_FILTER(residual_batch.cuda()).cpu()
+                residual_batch = median_filter(residual_batch.cuda()).cpu()
 
         # Fill output container
         result.scan = scan_batch
