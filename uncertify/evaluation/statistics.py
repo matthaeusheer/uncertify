@@ -1,5 +1,5 @@
 from collections import defaultdict
-import math
+import logging
 
 from scipy.stats.kde import gaussian_kde
 import torch
@@ -8,11 +8,12 @@ from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
 
+from uncertify.evaluation.entropy import get_entropy
 from uncertify.evaluation.inference import yield_inference_batches, BatchInferenceResult
-from uncertify.evaluation.waic import sample_wise_waic_scores
-from uncertify.utils.custom_types import Tensor
 
 from typing import List, Dict, Iterable
+
+LOG = logging.getLogger(__name__)
 
 
 def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, statistics: Iterable[str],
@@ -166,15 +167,15 @@ def rec_error_entropy_batch_stat(batch: BatchInferenceResult, normalize_kind: st
             raise ValueError(f'Normalization strategy {normalize_kind} not supported.')
     # Calculate entropy per slice
     entropy_array = np.empty(batch_size)
-    maximal_indices = []
+    minimal_indices = []
     for idx, (image, mask) in enumerate(zip(residual_batch, batch.mask)):
         if torch.sum(mask) > 10:
             entropy_array[idx] = get_entropy(image[0], mask[0])  # Use first (only) channel
         else:
-            maximal_indices.append(idx)
+            minimal_indices.append(idx)
     # For empty mask images, set entropy to maximum entropy encountered in batch
-    max_entropy = min(entropy_array)
-    entropy_array[maximal_indices] = max_entropy
+    min_entropy = min(entropy_array)
+    entropy_array[minimal_indices] = min_entropy
     return entropy_array
 
 
@@ -189,15 +190,4 @@ STATISTICS_FUNCTIONS = {
     'entropy': rec_error_entropy_batch_stat
 }
 
-
-def get_entropy(image: Tensor, mask: Tensor) -> float:
-    """Calculate the normalized Shannon entropy for a single image (residual map)."""
-    # entropy = Categorical(image[mask]).entropy()  # the pytorch way without normalization
-    eps = 1e-5
-    n_masked_pixels = torch.sum(mask)
-    masked_pixels = image[mask]
-    entropy = 0.0
-    for pix in masked_pixels:
-        entropy -= (float(pix) * math.log2(float(pix) + eps)) / math.log2(n_masked_pixels)
-    return entropy
 
