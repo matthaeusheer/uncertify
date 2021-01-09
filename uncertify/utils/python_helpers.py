@@ -13,3 +13,14 @@ def get_indices_of_n_smallest_items(input_list: list, n: int) -> list:
 
 def get_idx_of_closest_value(some_list: list, value: float) -> int:
     return min(range(len(some_list)), key=lambda i: abs(some_list[i] - value))
+
+
+def print_dict_tree(dict_: dict, n_indents: int = 1, keys_only: bool = True) -> None:
+    indentation = 2 * ' '
+    for key, value in dict_.items():
+        print(indentation * n_indents + f'|__> {key}')
+        if isinstance(value, dict):
+            print_dict_tree(value, n_indents + 1)
+        else:
+            if not keys_only:
+                print(indentation * (n_indents + 1) + str(value))
