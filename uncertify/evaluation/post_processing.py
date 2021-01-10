@@ -222,8 +222,7 @@ class BinaryMorphology(Transform):
         """
         super().__init__(**super_kwargs)
         # Validate and assign mode
-        assert (mode in ['dilate', 'erode'],
-                "Mode must be one of ['dilate', 'erode']. Got {} instead.".format(mode))
+        assert mode in ['dilate', 'erode'], f"Mode must be one of ['dilate', 'erode']. Got {mode} instead."
         self.mode = mode
         self.num_iterations = num_iterations
         self.morphology_kwargs = {} if morphology_kwargs is None else dict(morphology_kwargs)

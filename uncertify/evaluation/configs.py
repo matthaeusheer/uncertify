@@ -29,11 +29,11 @@ class PixelThresholdSearchConfig:
 @dataclass
 class PerformanceEvaluationConfig:
     # Min, max, and number of values for segmentation performance vs threshold calculations
-    min_val: float = 0.0
-    max_val: float = 3.0
-    num_values: int = 5
+    min_val: float = 0.5
+    max_val: float = 2.5
+    num_values: int = 10
     do_iou: bool = False
-    do_multiple_thresholds: bool = False
+    do_multiple_thresholds: bool = True
 
 
 @dataclass

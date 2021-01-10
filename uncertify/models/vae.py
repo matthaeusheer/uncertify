@@ -34,7 +34,7 @@ class VariationalAutoEncoder(pl.LightningModule):
     def __init__(self, encoder: nn.Module, decoder: nn.Module,
                  beta_config: BetaConfig = ConstantBetaConfig(beta=1.0),
                  n_m_factor: float = 1.0, ood_dataloaders: List[Dict[str, DataLoader]] = None,
-                 loss_type: str = 'l1') -> None:
+                 loss_type: str = 'l1', mask_start_step: int = 0) -> None:
         """Variational Auto Encoder which works with generic encoders and decoders.
         Arguments:
             encoder: the encoder module (can be pytorch or lightning module)
@@ -53,6 +53,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._n_m_factor = n_m_factor
         self._ood_dataloaders = ood_dataloaders
         self._loss_type = loss_type
+        self._mask_start_step = mask_start_step
 
     def forward(self, img_tensor: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor,
                                                                  Tensor, Tensor, Tensor, Tensor, Tensor]:
@@ -77,7 +78,10 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
-        mask = batch['mask']
+
+        # Scheduled masked training - only enable masking when long enough into training
+        masking_enabled = self._train_step_counter >= self._mask_start_step
+        mask = batch['mask'] if masking_enabled else torch.ones_like(batch['mask'], dtype=torch.bool)
 
         # Run batch through model and get losses
         rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
@@ -91,6 +95,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         self.logger.experiment.add_scalars('train_loss_term', train_loss_terms,
                                            global_step=self._train_step_counter)
         self.logger.experiment.add_scalar('beta', self._calculate_beta(self._train_step_counter),
+                                          global_step=self._train_step_counter)
+        self.logger.experiment.add_scalar('masking_enabled', int(masking_enabled),
                                           global_step=self._train_step_counter)
         self._train_step_counter += 1
         return {'loss': total_loss}  # w.r.t this will be optimized
