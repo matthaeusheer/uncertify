@@ -144,6 +144,12 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Runs a quick train and validation loop for debugging.'
     )
+    parser.add_argument(
+        '--mask-start-step',
+        type=int,
+        default=0,
+        help='After this amount of training steps enable masking in train steps.'
+    )
     return parser.parse_args()
 
 
@@ -252,7 +258,8 @@ def main(args: argparse.Namespace) -> None:
         model = VariationalAutoEncoder(encoder=BaurEncoder(), decoder=BaurDecoder(),
                                        beta_config=beta_config,
                                        n_m_factor=n_m_factor,
-                                       ood_dataloaders=ood_dataloaders)
+                                       ood_dataloaders=ood_dataloaders,
+                                       mask_start_step=args.mask_start_step)
     elif args.model == 'zimmerer':
         model = VariationalAutoEncoder(encoder=ZimmererEncoder(), decoder=ZimmererDecoder(),
                                        beta_config=beta_config,
