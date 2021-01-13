@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 
 from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
-from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig, IBSRConfig
+from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig, IBSRConfig, CANDIConfig
 from uncertify.data.preprocessing.preprocessing_config import BACKGROUND_VALUE
 
 from typing import List, Union
@@ -32,7 +32,8 @@ def transform_images_ibsr(images: np.ndarray, is_mask: bool = False) -> np.ndarr
     """Image transforms for IBSR data. Note that masks need other axis-rearrangement than scans and that the
     different pixel sizes require a resizing in the width direction after rotation."""
     # Remove last unused dimension
-    images = images[:, :, :, 0]
+    if len(images.shape) == 4:
+        images = images[:, :, :, 0]
     if is_mask:
         images = np.transpose(images, axes=(2, 0, 1))
     else:
@@ -50,9 +51,27 @@ def transform_images_ibsr(images: np.ndarray, is_mask: bool = False) -> np.ndarr
         square_img = resized[:, center_width_idx-128//2:center_width_idx+128//2]
         # Resize to (200, 200)
         axial_views[axial_idx, :, :] = cv2.resize(square_img, (200, 200))
-    pass
-    # At this point the images are not square, cut away sides to make them square
+    return axial_views
 
+
+def transform_images_candi(images: np.ndarray, is_mask: bool = False) -> np.ndarray:
+    """Image transforms for IBSR data. Note that masks need other axis-rearrangement than scans and that the
+    different pixel sizes require a resizing in the width direction after rotation."""
+    # Remove last unused dimension
+    images = np.transpose(images, axes=(1, 0, 2))
+    images = np.rot90(images, k=1, axes=(1, 2))
+    n_axial_views, height, width = images.shape
+    # Need to scale width-dimension
+    scale_factor = 1.5
+    width = int(width / scale_factor)
+    axial_views = np.empty((n_axial_views, 200, 200))
+    for axial_idx in range(n_axial_views):
+        resized = cv2.resize(images[axial_idx], (width, height))
+        center_width_idx = width // 2
+        # Make image square
+        square_img = resized[:, center_width_idx-128//2:center_width_idx+128//2]
+        # Resize to (200, 200)
+        axial_views[axial_idx, :, :] = cv2.resize(square_img, (200, 200))
     return axial_views
 
 
@@ -127,9 +146,10 @@ def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig, IBSRConfig], 
     is_brats = isinstance(config, BratsConfig)
     is_camcan = isinstance(config, CamCanConfig)
     is_ibsr = isinstance(config, IBSRConfig)
+    is_candi = isinstance(config, CANDIConfig)
 
     name = config.dataset_name
-    if is_camcan or is_ibsr:
+    if is_camcan or is_ibsr or is_candi:
         name += f'_{train_or_val}'
     name += f'_{config.image_modality}'
     if config.do_histogram_matching:

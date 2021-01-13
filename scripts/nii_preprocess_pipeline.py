@@ -11,11 +11,12 @@ from sklearn.model_selection import train_test_split
 
 from uncertify.data.preprocessing.camcan import get_camcan_nii_sample_file_paths, get_camcan_nii_mask_file_paths
 from uncertify.data.preprocessing.ibsr import get_isbr2_nii_file_paths, get_isbr2_sample_dir_paths
-from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, IBSRConfig, PreprocessConfig
+from uncertify.data.preprocessing.candi import get_candi_nii_file_paths, get_candi_sample_dir_paths
+from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, IBSRConfig, PreprocessConfig, CANDIConfig
 from uncertify.data.preprocessing.preprocessing_config import preprocess_config_factory
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import run_histogram_matching
-from uncertify.data.preprocessing.processing_funcs import transform_images_camcan, transform_images_ibsr
+from uncertify.data.preprocessing.processing_funcs import transform_images_camcan, transform_images_ibsr, transform_images_candi
 from uncertify.data.preprocessing.processing_funcs import create_masks_camcan
 from uncertify.data.preprocessing.processing_funcs import normalize_images
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
@@ -99,6 +100,10 @@ class PreProcessingPipeline:
             sample_dir_paths = get_isbr2_sample_dir_paths(self._config.dataset_root_path)
             img_paths = sorted(get_isbr2_nii_file_paths(sample_dir_paths, 'ana'))
             mask_paths = sorted(get_isbr2_nii_file_paths(sample_dir_paths, 'ana_brainmask'))
+        elif isinstance(self._config, CANDIConfig):
+            sample_dir_paths = get_candi_sample_dir_paths(self._config.dataset_root_path)
+            img_paths = sorted(get_candi_nii_file_paths(sample_dir_paths, '_procimg'))
+            mask_paths = sorted(get_candi_nii_file_paths(sample_dir_paths, '.seg'))
         elif isinstance(self._config, CamCanConfig):
             # No masks available out of the box, img and mask paths will be the same here (both images actually)
             img_paths = sorted(
@@ -159,21 +164,27 @@ class PreProcessingPipelineCamCan(PreProcessingPipeline):
             yield transformed_images, transformed_mask
 
 
-class PreProcessingPipelineIBSR(PreProcessingPipeline):
+class PreProcessingPipelineIBSRCANDI(PreProcessingPipeline):
 
     def process_patients(self, img_mask_tuple_list: list,
                          train_or_val: str) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
         n_patients = len(img_mask_tuple_list)
         for img_path, mask_path in tqdm(list(img_mask_tuple_list),
-                                        desc=f'Pre-processing IBSR {train_or_val}', total=n_patients):
+                                        desc=f'Pre-processing IBSR/CANDI {train_or_val}', total=n_patients):
             images = nib.load(img_path).get_fdata()
             masks = nib.load(mask_path).get_fdata()
-            transformed_images = transform_images_ibsr(images, is_mask=False)
-            transformed_masks = transform_images_ibsr(masks, is_mask=True)
+            if isinstance(self._config, IBSRConfig):
+                transformed_images = transform_images_ibsr(images, is_mask=False)
+                transformed_masks = transform_images_ibsr(masks, is_mask=True)
+            elif isinstance(self._config, CANDIConfig):
+                transformed_images = transform_images_candi(images)
+                transformed_masks = transform_images_candi(masks)
+            else:
+                raise TypeError(f'Wrong config type.')
 
             # Histogram matching against reference
             if self._config.do_histogram_matching:
-                raise NotImplementedError(f'Histogram matching not implemented for IBSR.')
+                raise NotImplementedError(f'Histogram matching not implemented for IBSR/CANDI.')
                 try:
                     ref_img = nib.load(self._config.ref_paths[self._config.image_modality]['img']).get_fdata()
                 except FileNotFoundError:
@@ -199,8 +210,8 @@ class PreProcessingPipelineIBSR(PreProcessingPipeline):
 def preprocess_pipeline_factory(config: PreprocessConfig) -> PreProcessingPipeline:
     if isinstance(config, CamCanConfig):
         return PreProcessingPipelineCamCan(config)
-    elif isinstance(config, IBSRConfig):
-        return PreProcessingPipelineIBSR(config)
+    elif isinstance(config, IBSRConfig) or isinstance(config, CANDIConfig):
+        return PreProcessingPipelineIBSRCANDI(config)
     else:
         raise TypeError(f'Preprocessing config not supported.')
 
@@ -209,7 +220,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Script to process a CamCAN dataset and produce an HDF5 dataset.')
     parser.add_argument('--dataset-name',
                         default='camcan',
-                        choices=['camcan', 'ibsr'],
+                        choices=['camcan', 'ibsr', 'candi'],
                         help='Name / type of the dataset used.')
 
     parser.add_argument('--dataset-root-path',

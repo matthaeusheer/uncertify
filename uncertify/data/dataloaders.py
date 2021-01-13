@@ -22,6 +22,7 @@ class DatasetType(Enum):
     CAMCAN = 3
     GAUSS_NOISE = 4
     IBSR = 5
+    CANDI = 6
 
 
 BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
@@ -62,14 +63,13 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
         val_dataloader = brats17_val_dataloader(val_set_path, batch_size, shuffle_val,
                                                 num_workers, transform, uppercase_keys, add_gauss_blobs)
 
-    elif dataset_type is DatasetType.CAMCAN or dataset_type is DatasetType.IBSR:
+    elif dataset_type is DatasetType.CAMCAN or dataset_type is DatasetType.IBSR or dataset_type is DatasetType.CANDI:
         train_dataloader, val_dataloader = camcan_data_loader(train_set_path, val_set_path, batch_size,
                                                               shuffle_train, shuffle_val,
                                                               num_workers, transform, uppercase_keys, add_gauss_blobs)
 
     elif dataset_type is DatasetType.GAUSS_NOISE:
-        # TODO: Shape etc. is still hardcoded here to 128x128
-        noise_set = GaussianNoiseDataset()
+        noise_set = GaussianNoiseDataset(shape=(1, 128, 128))
         train_dataloader = None
         val_dataloader = DataLoader(noise_set, batch_size=batch_size)
     else:
