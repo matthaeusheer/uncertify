@@ -52,8 +52,14 @@ class CamCanConfig(PreprocessConfig):
     val_fraction: float
 
 
+@dataclass
+class IBSRConfig(PreprocessConfig):
+    image_modality: str
+    val_fraction: float
+
+
 def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
-                              dataset_type: str) -> Union[BratsConfig, CamCanConfig]:
+                              dataset_type: str) -> Union[BratsConfig, CamCanConfig, IBSRConfig]:
     """Factory method to create a pre-processing config based on the parsed command line arguments."""
     if dataset_type == 'brats':
         config = BratsConfig(
@@ -96,9 +102,30 @@ def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
             print_debug=args.print_debug
         )
         return config
+    elif dataset_type == 'ibsr':
+        config = IBSRConfig(
+            dataset_name=args.dataset_name,
+            dataset_root_path=args.dataset_root_path,
+            image_modality='t1',
+            limit_to_n_samples=args.limit_n_samples,
+            exclude_empty_slices=args.exclude_empty_slices,
+            do_histogram_matching=not args.no_histogram_matching,
+            ref_paths=ref_paths,
+            do_normalization=not args.no_normalization,
+            normalization_method=args.normalization_method,
+            background_value=args.background_value,
+            hdf5_out_folder_path=args.hdf5_out_dir_path,
+            n4_executable_path=N4_EXECUTABLE_PATH,
+            val_fraction=args.val_fraction,
+            print_debug=args.print_debug
+        )
+        return config
+    else:
+        raise KeyError(f'Given dataset_type {dataset_type} not supported.')
 
 
 def validate_preprocess_config(config: PreprocessConfig) -> PreprocessConfig:
     """Validates that the config can produce a valid pre-processing run and return the valid config."""
-    # TODO: Code this up.
+    # TODO: Implement.
+    raise NotImplementedError
     return config

@@ -15,7 +15,7 @@ from uncertify.data.preprocessing.preprocessing_config import BratsConfig, prepr
 from uncertify.data.preprocessing.processing_funcs import transform_images_brats
 from uncertify.data.preprocessing.processing_funcs import normalize_images
 from uncertify.data.preprocessing.processing_funcs import run_histogram_matching
-from uncertify.data.preprocessing.processing_funcs import create_masks
+from uncertify.data.preprocessing.processing_funcs import create_masks_camcan
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.utils.python_helpers import bool_to_str
@@ -84,8 +84,8 @@ def process_modality(modality: str, sample_dir_path: Path, config: BratsConfig) 
 
     # Load actual NII data file
     slices: np.array = nib.load(nii_file_path).get_fdata()
-    original_mask = create_masks(slices)
-    transformed_mask = create_masks(transform_images_brats(slices))
+    original_mask = create_masks_camcan(slices)
+    transformed_mask = create_masks_camcan(transform_images_brats(slices))
 
     # Histogram matching
     if config.do_histogram_matching and modality != 'seg':
@@ -143,7 +143,7 @@ def run_bias_correction_single_file(dir_path: Path, in_file_name: str, out_file_
         raise
     # Now store mask because we might need it for reference histogram matching
     slices = nib.load(dir_path / out_file_name).get_fdata()
-    mask = create_masks(slices)
+    mask = create_masks_camcan(slices)
     out_mask_name = create_nii_file_name(dir_path.name, modality, is_mask=True, is_unbiased=True, is_processed=False)
     nif_masks = nib.Nifti1Image(mask, np.eye(4))
     nib.save(nif_masks, dir_path / out_mask_name)
