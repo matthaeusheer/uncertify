@@ -3,10 +3,11 @@ from pathlib import Path
 
 from typing import List
 
+
 MODALITY_MAP = {'t1': 'T1w', 't2': 'T2w'}
 
 
-def get_nii_sample_file_paths(root_dir_path: Path, modality: str, keyword: str = 'unbiased') -> List[Path]:
+def get_camcan_nii_sample_file_paths(root_dir_path: Path, modality: str, keyword: str = 'unbiased') -> List[Path]:
     """Gets all nii file paths for a given modality.
     Assumes that the folder layout is as follows
         CamCAN/
@@ -23,20 +24,15 @@ def get_nii_sample_file_paths(root_dir_path: Path, modality: str, keyword: str =
     Arguments:
         root_dir_path: path of the directory in which the 'T1w' and 'T2w' folders reside.
         modality: imaging modality, 't1' or 't2'
-        keyword: if this keyword is in a file name the file is added to the list returned by this function
+        keyword: only if this keyword is in a file name the file is added to the list returned by this function
     """
     sample_dir_path = root_dir_path / MODALITY_MAP[modality]
     paths = [path for path in sample_dir_path.iterdir() if keyword in path.name]
     return paths
 
 
-def get_nii_mask_file_paths(root_dir_path: Path, modality: str, keyword: str = 'mask') -> List[Path]:
+def get_camcan_nii_mask_file_paths(root_dir_path: Path, modality: str, keyword: str = 'mask') -> List[Path]:
     """Works similar to get_nii_sample_files_paths but for masks."""
     sample_dir_path = root_dir_path / MODALITY_MAP[modality]
     paths = [path for path in sample_dir_path.iterdir() if keyword in path.name]
     return paths
-
-
-def dissect_file_name(file_name: str) -> dict:
-    """Takes the file name of a .nii.gz file for a patient apart into its components."""
-    pass

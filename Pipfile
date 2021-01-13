@@ -11,8 +11,11 @@ verify_ssl = false
 [dev-packages]
 pytest = "*"
 jupyterlab = "*"
-jupyter = "*"
 matplotlib = "*"
+jupyter-kite = "*"
+install = "*"
+jupyterlab-hdf = "*"
+ipympl = "*"
 
 [packages]
 pyyaml = "*"
@@ -28,8 +31,11 @@ tqdm = "*"
 install = "*"
 scikit-plot = "*"
 nibabel = "*"
-jupyterlab = "*"
 umap-learn = "*"
+mrivis = "*"
+opencv-python = "*"
+xeus-python = "*"
+nbresuse = "*"
 
 [requires]
 python_version = "3.8"

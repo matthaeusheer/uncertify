@@ -2,9 +2,10 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+import cv2
 
 from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
-from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig
+from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig, IBSRConfig
 from uncertify.data.preprocessing.preprocessing_config import BACKGROUND_VALUE
 
 from typing import List, Union
@@ -25,6 +26,34 @@ def transform_images_camcan(images: np.ndarray) -> np.ndarray:
     images = pad_camcan_images(images)
     images = images[:, 27:227, 20:220]  # arbitrary numbers crop
     return images
+
+
+def transform_images_ibsr(images: np.ndarray, is_mask: bool = False) -> np.ndarray:
+    """Image transforms for IBSR data. Note that masks need other axis-rearrangement than scans and that the
+    different pixel sizes require a resizing in the width direction after rotation."""
+    # Remove last unused dimension
+    images = images[:, :, :, 0]
+    if is_mask:
+        images = np.transpose(images, axes=(2, 0, 1))
+    else:
+        images = np.transpose(images, axes=(1, 0, 2))
+    images = np.rot90(images, k=1, axes=(1, 2))
+    n_axial_views, height, width = images.shape
+    # Need to scale width-dimension
+    scale_factor = 1.5
+    width = int(width / scale_factor)
+    axial_views = np.empty((n_axial_views, 200, 200))
+    for axial_idx in range(n_axial_views):
+        resized = cv2.resize(images[axial_idx], (width, height))
+        center_width_idx = width // 2
+        # Make image square
+        square_img = resized[:, center_width_idx-128//2:center_width_idx+128//2]
+        # Resize to (200, 200)
+        axial_views[axial_idx, :, :] = cv2.resize(square_img, (200, 200))
+    pass
+    # At this point the images are not square, cut away sides to make them square
+
+    return axial_views
 
 
 def pad_camcan_images(images: np.ndarray) -> np.ndarray:
@@ -67,7 +96,7 @@ def run_histogram_matching(input_images: np.ndarray, input_masks: np.ndarray,
     return matched_img
 
 
-def create_masks(images: np.ndarray) -> np.ndarray:
+def create_masks_camcan(images: np.ndarray) -> np.ndarray:
     """Get the masks for (already manipulated) sample slices."""
     mask = (images != 0).astype('int')
     return mask
@@ -91,15 +120,16 @@ def get_indices_to_keep(mask_file_path: Union[Path, np.ndarray], exclude_empty_s
         return non_empty_slice_indices
 
 
-def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig], train_or_val: str = 'train',
+def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig, IBSRConfig], train_or_val: str = 'train',
                           file_ending: str = '.hdf5') -> str:
     """Given the arguments passed into this script, create a meaningful filename for the created HDF5 file.."""
     assert train_or_val in {'train', 'val'}, f'Given train_or_val {train_or_val} not allowed.'
     is_brats = isinstance(config, BratsConfig)
     is_camcan = isinstance(config, CamCanConfig)
+    is_ibsr = isinstance(config, IBSRConfig)
 
     name = config.dataset_name
-    if is_camcan:
+    if is_camcan or is_ibsr:
         name += f'_{train_or_val}'
     name += f'_{config.image_modality}'
     if config.do_histogram_matching:

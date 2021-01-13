@@ -81,7 +81,7 @@ class VariationalAutoEncoder(pl.LightningModule):
 
         # Scheduled masked training - only enable masking when long enough into training
         masking_enabled = self._train_step_counter >= self._mask_start_step
-        mask = batch['mask'] if masking_enabled else torch.ones_like(batch['mask'], dtype=torch.bool)
+        mask = batch['mask'] if masking_enabled else None
 
         # Run batch through model and get losses
         rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
@@ -103,7 +103,10 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def validation_step(self, batch: dict, batch_idx: int) -> dict:
         features = batch['scan']
-        mask = batch['mask']
+
+        # Scheduled masked training - only enable masking when long enough into training
+        masking_enabled = self._train_step_counter >= self._mask_start_step
+        mask = batch['mask'] if masking_enabled else None
 
         # Run validation batch through model and get losses
         rec_batch, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code = self(features,
@@ -148,11 +151,14 @@ class VariationalAutoEncoder(pl.LightningModule):
 
     def loss_function(self, reconstruction: Tensor, observation: Tensor, mask: Tensor, mu: Tensor, log_var: Tensor,
                       beta: float = 1.0, train_step: int = None):
-        # Enables masked training
-        mask = torch.ones_like(reconstruction) if mask is None else mask
+        masking_enabled = mask is not None
+        mask = mask if masking_enabled else torch.ones_like(observation, dtype=torch.bool)
+        # When masking enabled dampen contribution of out-of-mask pixels (only 10% as important in rec error)
+        weights_mask = torch.ones_like(observation) if not masking_enabled else (~mask) * 0.1 + mask
 
         # Reconstruction Error
         slice_rec_err = torch_functional.l1_loss(observation*mask, reconstruction*mask, reduction='none')
+        slice_rec_err *= weights_mask
         slice_rec_err = torch.sum(slice_rec_err, dim=(1, 2, 3))
         slice_wise_non_empty = torch.sum(mask, dim=(1, 2, 3))
         slice_wise_non_empty[slice_wise_non_empty == 0] = 1  # for empty masks
