@@ -130,10 +130,10 @@ class MnistDatasetWrapper(Dataset):
 
 
 class GaussianNoiseDataset(Dataset):
-    def __init__(self) -> None:
+    def __init__(self, shape: tuple) -> None:
         """A toy dataset which is not really a dataset but simply generates images with noise on the fly."""
         self._dataset_length = 10000
-        self._img_shape = (1, 128, 128)
+        self._img_shape = shape  # e.g. (1, 128, 128)
 
     def __len__(self) -> int:
         return self._dataset_length
