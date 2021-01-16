@@ -12,17 +12,19 @@ from sklearn.model_selection import train_test_split
 from uncertify.data.preprocessing.camcan import get_camcan_nii_sample_file_paths, get_camcan_nii_mask_file_paths
 from uncertify.data.preprocessing.ibsr import get_isbr2_nii_file_paths, get_isbr2_sample_dir_paths
 from uncertify.data.preprocessing.candi import get_candi_nii_file_paths, get_candi_sample_dir_paths
-from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, IBSRConfig, PreprocessConfig, CANDIConfig
+from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, IBSRConfig, PreprocessConfig, CANDIConfig, \
+    IXIConfig
 from uncertify.data.preprocessing.preprocessing_config import preprocess_config_factory
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import run_histogram_matching
-from uncertify.data.preprocessing.processing_funcs import transform_images_camcan, transform_images_ibsr, transform_images_candi
+from uncertify.data.preprocessing.processing_funcs import transform_images_camcan, transform_images_ibsr, \
+    transform_images_candi
 from uncertify.data.preprocessing.processing_funcs import create_masks_camcan
 from uncertify.data.preprocessing.processing_funcs import normalize_images
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name
 from uncertify.common import DATA_DIR_PATH
 
-from typing import Generator, Tuple, List
+from typing import Generator, Tuple, List, Union
 
 DEFAULT_CamCAN_ROOT_PATH = DATA_DIR_PATH / 'raw' / 'CamCAN'
 DEFAULT_IBSR_ROOT_PATH = Path('/mnt/2TB_internal_HD/datasets/raw/IBSR/IBSR_V2.0_nifti_stripped/IBSR_nifti_stripped')
@@ -110,6 +112,11 @@ class PreProcessingPipeline:
                 get_camcan_nii_sample_file_paths(self._config.dataset_root_path, self._config.image_modality))
             mask_paths = sorted(
                 get_camcan_nii_mask_file_paths(self._config.dataset_root_path, self._config.image_modality))
+        elif isinstance(self._config, IXIConfig):
+            img_paths = sorted(
+                get_camcan_nii_sample_file_paths(self._config.dataset_root_path, self._config.image_modality,
+                                                 keyword=None))
+            mask_paths = img_paths
         else:
             raise TypeError(f'Config type {self._config.__class__} not supported.')
         assert len(img_paths) == len(mask_paths), f'Not same amount of images and mask files. Abort.'
@@ -123,15 +130,15 @@ class PreProcessingPipeline:
         return img_mask_tuple_list
 
 
-class PreProcessingPipelineCamCan(PreProcessingPipeline):
-    def __init__(self, config: CamCanConfig) -> None:
+class PreProcessingPipelineCamCanIXI(PreProcessingPipeline):
+    def __init__(self, config: Union[CamCanConfig, IXIConfig]) -> None:
         super().__init__(config)
 
     def process_patients(self, img_mask_tuple_list: list,
                          train_or_val: str) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
         n_patients = len(img_mask_tuple_list)
         for img_path, mask_path in tqdm(list(img_mask_tuple_list),
-                                        desc=f'Pre-processing CamCAN {train_or_val}', total=n_patients):
+                                        desc=f'Pre-processing CamCAN/IXI {train_or_val}', total=n_patients):
             images = nib.load(img_path).get_fdata()
             masks = nib.load(img_path).get_fdata()
             # creating transformed mask needs to happen before messing with pixel values (normalization etc.)
@@ -208,8 +215,8 @@ class PreProcessingPipelineIBSRCANDI(PreProcessingPipeline):
 
 
 def preprocess_pipeline_factory(config: PreprocessConfig) -> PreProcessingPipeline:
-    if isinstance(config, CamCanConfig):
-        return PreProcessingPipelineCamCan(config)
+    if isinstance(config, CamCanConfig) or isinstance(config, IXIConfig):
+        return PreProcessingPipelineCamCanIXI(config)
     elif isinstance(config, IBSRConfig) or isinstance(config, CANDIConfig):
         return PreProcessingPipelineIBSRCANDI(config)
     else:
@@ -220,13 +227,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Script to process a CamCAN dataset and produce an HDF5 dataset.')
     parser.add_argument('--dataset-name',
                         default='camcan',
-                        choices=['camcan', 'ibsr', 'candi'],
+                        choices=['camcan', 'ibsr', 'candi', 'ixi'],
                         help='Name / type of the dataset used.')
 
     parser.add_argument('--dataset-root-path',
                         type=Path,
                         default=DEFAULT_CamCAN_ROOT_PATH,
-                        help='The root folder where the sub-folders for modalities exist.')
+                        help='The root folder where the sub-folders for modalities/samples exist '
+                             '(depending on dataset-name/type).')
 
     parser.add_argument('-m',
                         '--modality',
@@ -294,7 +302,7 @@ if __name__ == '__main__':
                  }
     args = parse_args()
     run_config = preprocess_config_factory(args, ref_paths, dataset_type=args.dataset_name)
-    print('Pre-processing config:')
+    print(f'Pre-processing config: {run_config.dataset_name}')
     pprint(run_config.__dict__)
 
     preprocessing_pipeline = preprocess_pipeline_factory(run_config)

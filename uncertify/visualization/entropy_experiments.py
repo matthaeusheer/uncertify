@@ -135,9 +135,10 @@ def plot_entropy_segmentations(input_batch: dict, add_circles: bool = False, add
         if add_circles:
             seg_img = add_random_circles(seg_img, 8)
         if add_gauss_blobs:
-            seg_img = add_random_gauss_blobs(seg_img, 8)
+            seg_img, blob_segs = add_random_gauss_blobs(seg_img, 1)
+            n_non_zero_blobs = torch.sum(blob_segs)
 
-        n_seg_circ_pixels = (seg_img != 0).sum()
+        n_seg_circ_pixels = (seg_img != 0).sum() if not add_gauss_blobs else n_non_zero_blobs
 
         if add_steady_background > 0.0:
             seg_img += torch.ones_like(seg_img) * add_steady_background
@@ -147,7 +148,7 @@ def plot_entropy_segmentations(input_batch: dict, add_circles: bool = False, add
                 seg_img = seg_img / torch.sum(seg_img)
 
         if not add_circles:
-            use_zero_entropy = torch.sum(mask_img) < 10 or n_seg_pixels < 10
+            use_zero_entropy = torch.sum(mask_img) < 10  # or n_seg_pixels < 10
         else:
             use_zero_entropy = n_seg_circ_pixels < 10
 
@@ -158,7 +159,7 @@ def plot_entropy_segmentations(input_batch: dict, add_circles: bool = False, add
             n_non_zeros.append(n_seg_circ_pixels)
             entropies.append(entropy)
 
-        im = ax.imshow(seg_img, cmap='gray')  # , vmin=6e-5, vmax=6.6e-5)
+        ax.imshow(seg_img, cmap='gray', vmin=0, vmax=0.001)  # , vmin=6e-5, vmax=6.6e-5)
         ax.annotate(f'{entropy:.2f}\n({n_seg_circ_pixels})', (10, 50), color='red', fontsize=14)
         ax.axis('off')
 

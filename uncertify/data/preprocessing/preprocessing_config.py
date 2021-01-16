@@ -53,6 +53,12 @@ class CamCanConfig(PreprocessConfig):
 
 
 @dataclass
+class IXIConfig(PreprocessConfig):
+    image_modality: str
+    val_fraction: float
+
+
+@dataclass
 class IBSRConfig(PreprocessConfig):
     image_modality: str
     val_fraction: float
@@ -65,7 +71,7 @@ class CANDIConfig(PreprocessConfig):
 
 
 def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
-                              dataset_type: str) -> Union[BratsConfig, CamCanConfig, IBSRConfig, CANDIConfig]:
+                              dataset_type: str) -> Union[BratsConfig, CamCanConfig, IBSRConfig, CANDIConfig, IXIConfig]:
     """Factory method to create a pre-processing config based on the parsed command line arguments."""
     if dataset_type == 'brats':
         config = BratsConfig(
@@ -92,6 +98,24 @@ def preprocess_config_factory(args: argparse.Namespace, ref_paths: dict,
         return config
     elif dataset_type == 'camcan':
         config = CamCanConfig(
+            dataset_name=args.dataset_name,
+            dataset_root_path=args.dataset_root_path,
+            image_modality=args.modality,
+            limit_to_n_samples=args.limit_n_samples,
+            exclude_empty_slices=args.exclude_empty_slices,
+            do_histogram_matching=not args.no_histogram_matching,
+            ref_paths=ref_paths,
+            do_normalization=not args.no_normalization,
+            normalization_method=args.normalization_method,
+            background_value=args.background_value,
+            hdf5_out_folder_path=args.hdf5_out_dir_path,
+            n4_executable_path=N4_EXECUTABLE_PATH,
+            val_fraction=args.val_fraction,
+            print_debug=args.print_debug
+        )
+        return config
+    elif dataset_type == 'ixi':
+        config = IXIConfig(
             dataset_name=args.dataset_name,
             dataset_root_path=args.dataset_root_path,
             image_modality=args.modality,
