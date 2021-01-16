@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 
 from uncertify.data.preprocessing.histogram_matching.histogram_matching import MatchHistogramsTwoImages
-from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig, IBSRConfig, CANDIConfig
+from uncertify.data.preprocessing.preprocessing_config import CamCanConfig, BratsConfig, IBSRConfig, CANDIConfig, IXIConfig
 from uncertify.data.preprocessing.preprocessing_config import BACKGROUND_VALUE
 
 from typing import List, Union
@@ -139,7 +139,7 @@ def get_indices_to_keep(mask_file_path: Union[Path, np.ndarray], exclude_empty_s
         return non_empty_slice_indices
 
 
-def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig, IBSRConfig], train_or_val: str = 'train',
+def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig, IBSRConfig, IXIConfig], train_or_val: str = 'train',
                           file_ending: str = '.hdf5') -> str:
     """Given the arguments passed into this script, create a meaningful filename for the created HDF5 file.."""
     assert train_or_val in {'train', 'val'}, f'Given train_or_val {train_or_val} not allowed.'
@@ -147,9 +147,10 @@ def create_hdf5_file_name(config: Union[BratsConfig, CamCanConfig, IBSRConfig], 
     is_camcan = isinstance(config, CamCanConfig)
     is_ibsr = isinstance(config, IBSRConfig)
     is_candi = isinstance(config, CANDIConfig)
+    is_ixi = isinstance(config, IXIConfig)
 
     name = config.dataset_name
-    if is_camcan or is_ibsr or is_candi:
+    if is_camcan or is_ibsr or is_candi or is_ixi:
         name += f'_{train_or_val}'
     name += f'_{config.image_modality}'
     if config.do_histogram_matching:

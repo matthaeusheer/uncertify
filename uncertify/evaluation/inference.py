@@ -109,6 +109,9 @@ def yield_inference_batches(data_loader: DataLoader,
             inference_result = trained_model(scan_batch, batch['mask'] if 'mask' in batch.keys() else None)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
+        if torch.isnan(rec_batch).any():
+            raise RuntimeError(f'Reconstruction contains nan values!')
+
         if 'mask' in batch.keys():
             mask_batch = batch['mask']
             result.mask = mask_batch

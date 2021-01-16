@@ -153,6 +153,8 @@ def rec_error_entropy_batch_stat(batch: BatchInferenceResult, normalize_kind: st
     if normalize_kind is not None:
         if normalize_kind == 'sum':
             slice_wise_sum = torch.sum(residual_batch, dim=(1, 2, 3))
+            # For slices which have zero sum in residuals, simply put 1, otherwise 'nan' gets created
+            slice_wise_sum = torch.where(slice_wise_sum > 0, slice_wise_sum, torch.ones_like(slice_wise_sum))
             for slice_idx in range(batch_size):
                 residual_batch[slice_idx] /= slice_wise_sum[slice_idx]
         elif normalize_kind == 'softmax':

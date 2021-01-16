@@ -1,13 +1,14 @@
 from pathlib import Path
 
 
-from typing import List
+from typing import List, Optional
 
 
 MODALITY_MAP = {'t1': 'T1w', 't2': 'T2w'}
 
 
-def get_camcan_nii_sample_file_paths(root_dir_path: Path, modality: str, keyword: str = 'unbiased') -> List[Path]:
+def get_camcan_nii_sample_file_paths(root_dir_path: Path, modality: str,
+                                     keyword: Optional[str] = 'unbiased') -> List[Path]:
     """Gets all nii file paths for a given modality.
     Assumes that the folder layout is as follows
         CamCAN/
@@ -27,7 +28,9 @@ def get_camcan_nii_sample_file_paths(root_dir_path: Path, modality: str, keyword
         keyword: only if this keyword is in a file name the file is added to the list returned by this function
     """
     sample_dir_path = root_dir_path / MODALITY_MAP[modality]
-    paths = [path for path in sample_dir_path.iterdir() if keyword in path.name]
+    paths = [path for path in sample_dir_path.iterdir()]
+    if keyword is not None:
+        paths = [path for path in paths if keyword in path.name]
     return paths
 
 
