@@ -9,6 +9,8 @@ import nibabel as nib
 import h5py
 from sklearn.model_selection import train_test_split
 
+import add_uncertify_to_path
+import uncertify
 from uncertify.data.preprocessing.camcan import get_camcan_nii_sample_file_paths, get_camcan_nii_mask_file_paths
 from uncertify.data.preprocessing.ibsr import get_isbr2_nii_file_paths, get_isbr2_sample_dir_paths
 from uncertify.data.preprocessing.candi import get_candi_nii_file_paths, get_candi_sample_dir_paths
