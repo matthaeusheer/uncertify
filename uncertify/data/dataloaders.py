@@ -53,22 +53,22 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
     """
     assert isinstance(dataset_type, DatasetType), f'Need to provide valid DatasetType (enum).'
 
-    if dataset_type is DatasetType.MNIST:
+    if dataset_type.value == DatasetType.MNIST.value:
         train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform, **kwargs)
         val_dataloader = mnist_val_dataloader(batch_size, shuffle_val, num_workers, transform, **kwargs)
 
-    elif dataset_type is DatasetType.BRATS17:
+    elif dataset_type.value == DatasetType.BRATS17.value:
         assert val_set_path is not None, f'For BraTS need to provide a validation dataset path!'
         train_dataloader = None
         val_dataloader = brats17_val_dataloader(val_set_path, batch_size, shuffle_val,
                                                 num_workers, transform, uppercase_keys, add_gauss_blobs)
 
-    elif dataset_type is DatasetType.CAMCAN or dataset_type is DatasetType.IBSR or dataset_type is DatasetType.CANDI:
+    elif dataset_type.value in [DatasetType.CAMCAN.value, DatasetType.IBSR.value, DatasetType.CANDI.value]:
         train_dataloader, val_dataloader = camcan_data_loader(train_set_path, val_set_path, batch_size,
                                                               shuffle_train, shuffle_val,
                                                               num_workers, transform, uppercase_keys, add_gauss_blobs)
 
-    elif dataset_type is DatasetType.GAUSS_NOISE:
+    elif dataset_type.value == DatasetType.GAUSS_NOISE.value:
         noise_set = GaussianNoiseDataset(shape=(1, 128, 128))
         train_dataloader = None
         val_dataloader = DataLoader(noise_set, batch_size=batch_size)
@@ -146,3 +146,7 @@ def mnist_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                       batch_size=batch_size,
                       shuffle=shuffle,
                       num_workers=num_workers)
+
+
+def print_dataloader_info(dataloader: DataLoader, name: str) -> None:
+    print(f'{name:18} dataloader: {len(dataloader):5} batches (batch_size: {dataloader.batch_size}) -> {len(dataloader) * dataloader.batch_size:10} samples.')

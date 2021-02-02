@@ -36,6 +36,7 @@ mrivis = "*"
 opencv-python = "*"
 xeus-python = "*"
 nbresuse = "*"
+dotmap = "*"
 
 [requires]
 python_version = "3.8"

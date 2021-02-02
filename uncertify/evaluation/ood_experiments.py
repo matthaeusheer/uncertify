@@ -12,10 +12,11 @@ from uncertify.evaluation.waic import LOG, sample_wise_waic_scores
 from uncertify.evaluation.dose import full_pipeline_slice_wise_dose_scores
 from uncertify.evaluation.statistics import aggregate_slice_wise_statistics, fit_statistics
 
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 
-def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ensemble_models: List[nn.Module],
+def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict,
+                        models_or_model: Union[List[nn.Module], nn.Module],
                         residual_threshold: float = None, max_n_batches: int = None,
                         eval_results_dir: Path = DATA_DIR_PATH / 'evaluation',
                         print_results_when_done: bool = True) -> None:
@@ -25,7 +26,7 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ens
     Arguments
         train_dataloader: the in-distribution dataloader from training the model
         dataloader_dict: (name, dataloader) dictionary
-        ensemble_models: a list of trained ensemble models
+        models_or_model: a list of trained ensemble models or a single model, note that e.g. WAIC needs ensembles
         residual_threshold: as usual
         eval_results_dir: for each dataloader, i.e. each run an output folder with results will be created here
         print_results_when_done: self-explanatory
@@ -40,8 +41,9 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict, ens
                                    SliceAnomalyDetectionResults(), OODDetectionResults())
         results.pixel_anomaly_result.best_threshold = residual_threshold
         results.make_dirs()
+        LOG.info(f'Evaluation run number: {results.run_number}')
         run_numbers.append(results.run_number)
-        run_ood_detection_performance(ensemble_models, train_dataloader, dataloader, eval_cfg, results)
+        run_ood_detection_performance(models_or_model, train_dataloader, dataloader, eval_cfg, results)
         results.test_set_name = name
         results.store_json()
     if print_results_when_done:
@@ -105,6 +107,7 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
             lesional_scans = []
             healthy_gt = []
             lesional_gt = []
+
             # For DoSE track organized individual dose scores as well
             dose_kde_healthy = defaultdict(list)
             dose_kde_lesional = defaultdict(list)
