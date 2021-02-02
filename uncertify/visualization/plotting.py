@@ -11,7 +11,7 @@ LOG = logging.getLogger(__name__)
 
 DEFAULT_SAVE_FIG_KWARGS = dict(dpi=600, transparent=True, bbox_inches='tight')
 
-matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
+# matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
 matplotlib.rcParams.update({'font.size': 22})
 plt.rcParams['axes.linewidth'] = 2
 

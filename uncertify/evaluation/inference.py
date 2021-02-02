@@ -79,7 +79,8 @@ def yield_inference_batches(data_loader: DataLoader,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
                             median_filter: MedianPool2d = MedianPool2d(kernel_size=5, padding=2),
                             mask_eroder: BinaryErosion = BinaryErosion(num_iterations=3),
-                            progress_bar_suffix: str = '') -> Generator[BatchInferenceResult, None, None]:
+                            progress_bar_suffix: str = '',
+                            manual_seed_val: int = 0) -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
 
     Arguments:
@@ -92,11 +93,15 @@ def yield_inference_batches(data_loader: DataLoader,
         median_filter: if filter provided, does smooth the residual map
         mask_eroder: erode brain mask inwards to get rid of false positive pixel anomalies on the brain edges
         progress_bar_suffix: possibility to add some informative stuff to the progress bar during inference
+        manual_seed_val: resets the random seed for torch
 
     Returns:
         result: a BatchInferenceResult dataclass container holding all results from the batch inference
     """
     result = BatchInferenceResult()
+
+    if manual_seed_val is not None:
+        torch.manual_seed(manual_seed_val)
 
     data_generator = itertools.islice(data_loader, max_batches) if max_batches is not None else data_loader
     n_batches = max_batches if max_batches is not None else len(data_loader)

@@ -2,25 +2,21 @@
 A Variational AutoEncoder model implemented using pytorch lightning.
 """
 import dataclasses
-from pathlib import Path
 from itertools import islice
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.nn.functional as torch_functional
 from torch.utils.data import DataLoader
 from torch import nn
 import torchvision
 import pytorch_lightning as pl
 from torch.optim.optimizer import Optimizer
-import torch.distributions as dist
 
 from uncertify.models.gradient import Gradient
 from uncertify.models.beta_annealing import monotonic_annealing, cyclical_annealing, sigmoid_annealing, decay_annealing
 from uncertify.models.beta_annealing import BetaConfig, ConstantBetaConfig, MonotonicBetaConfig, \
     CyclicBetaConfig, SigmoidBetaConfig, DecayBetaConfig
-from uncertify.models.encoder_decoder_baur2020 import BaurEncoder, BaurDecoder
 from uncertify.utils.sampling import random_uniform_ring
 from uncertify.evaluation.utils import residual_l1_max
 from uncertify.utils.custom_types import Tensor
@@ -134,7 +130,7 @@ class VariationalAutoEncoder(pl.LightningModule):
         self._log_random_eval_batch_reconstruction(outputs)
 
         # Sample from latent space and log reconstructions, from unit Gaussian and from within ranges
-        for min_max_range in [None, (1, 2), (3, 4), (6, 7), (20, 30), (50, 100), (100, 150)]:
+        for min_max_range in [None, (1, 2), (6, 7), (10, 11), (20, 30), (50, 100), (100, 150)]:
             self._log_latent_samples_reconstructions(n_samples=16, min_max_radius=min_max_range)
 
         # Sample from OOD datasets if provided
@@ -154,11 +150,11 @@ class VariationalAutoEncoder(pl.LightningModule):
         masking_enabled = mask is not None
         mask = mask if masking_enabled else torch.ones_like(observation, dtype=torch.bool)
         # When masking enabled dampen contribution of out-of-mask pixels (only 10% as important in rec error)
-        weights_mask = torch.ones_like(observation) if not masking_enabled else (~mask) * 0.1 + mask
+        # weights_mask = torch.ones_like(observation) if not masking_enabled else (~mask) * 0.1 + mask
 
         # Reconstruction Error
         slice_rec_err = torch_functional.l1_loss(observation*mask, reconstruction*mask, reduction='none')
-        slice_rec_err *= weights_mask
+        # slice_rec_err *= weights_mask
         slice_rec_err = torch.sum(slice_rec_err, dim=(1, 2, 3))
         slice_wise_non_empty = torch.sum(mask, dim=(1, 2, 3))
         slice_wise_non_empty[slice_wise_non_empty == 0] = 1  # for empty masks
@@ -254,11 +250,3 @@ class VariationalAutoEncoder(pl.LightningModule):
         grad_diff_grid = torchvision.utils.make_grid(res_grad_batch, padding=0, normalize=True)
         grid = torchvision.utils.make_grid([input_img_grid, output_img_grid, residual_img_grid, grad_diff_grid])
         return grid
-
-
-def load_vae_baur_model(checkpoint_path: Path) -> nn.Module:
-    assert checkpoint_path.exists(), f'Model checkpoint does not exist!'
-    model = VariationalAutoEncoder(BaurEncoder(), BaurDecoder())
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['state_dict'])
-    return model

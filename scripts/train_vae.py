@@ -153,7 +153,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_callbacks(args: argparse.Namespace) -> list:
+def get_callbacks() -> list:
     """Define all pytorch lightning callbacks to be passed into the lightning trainer."""
     checkpoint_callback = ModelCheckpoint(
         save_last=True,
@@ -167,16 +167,14 @@ def get_callbacks(args: argparse.Namespace) -> list:
 
 def get_trainer_kwargs(args: argparse.Namespace) -> dict:
     """Define the lightning trainer keyword arguments based on the command line arguments parsed."""
-    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
-    trainer_kwargs = {'logger': logger,
-                      'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
+    trainer_kwargs = {'default_root_dir': str(args.out_dir_path / 'lightning_logs'),
                       'val_check_interval': 0.5,  # check (1 / value) * times per train epoch
                       'gpus': 1,
-                      # 'distributed_backend': 'ddp',
+                      'distributed_backend': 'ddp',
                       # 'limit_train_batches': 0.2,
                       # 'limit_val_batches': 0.1,
                       'max_epochs': args.max_n_epochs,
-                      'profiler': False,
+                      'profiler': True,
                       'fast_dev_run': args.fast_dev_run}
     return trainer_kwargs
 
@@ -197,10 +195,11 @@ def main(args: argparse.Namespace) -> None:
     LOG.info(f'Argparse args: {pformat(args.__dict__)}')
 
     # Set up the trainer
-    trainer = pl.Trainer(**get_trainer_kwargs(args), callbacks=get_callbacks(args))
+    logger = TensorBoardLogger(str(args.out_dir_path / 'lightning_logs'), name=args.log_dir_name)
+    trainer = pl.Trainer(**get_trainer_kwargs(args), logger=logger, callbacks=get_callbacks())
 
-    os.makedirs(trainer.logger.log_dir)
-    store_dict(make_args_json_serializable(args), Path(trainer.logger.log_dir), 'hyper_parameters.json')
+    os.makedirs(logger.log_dir)
+    store_dict(make_args_json_serializable(args), Path(logger.log_dir), 'hyper_parameters.json')
 
     # Setup training and validation data
     if args.dataset == 'mnist':
@@ -279,5 +278,5 @@ if __name__ == '__main__':
     setup_logging()
     cmd_args = parse_args()
     for model_idx in range(cmd_args.n_ensembles):
-        LOG.info(f'Training model {model_idx + 1} / {cmd_args.n_ensembles}')
+        LOG.info(f'Training (ensemble) model {model_idx + 1} / {cmd_args.n_ensembles}')
         main(cmd_args)

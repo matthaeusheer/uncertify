@@ -7,7 +7,7 @@ from uncertify.utils.custom_types import Tensor
 from typing import Tuple
 
 
-def imshow_grid(grid_tensor: Tensor, one_channel: bool = False, plt_show: bool = True, **plt_kwargs) -> Tuple[plt.Figure,
+def imshow_grid(grid_tensor: Tensor, one_channel: bool = True, plt_show: bool = True, **plt_kwargs) -> Tuple[plt.Figure,
                                                                                                               plt.Axes]:
     """Does an imshow on an grid returned by torchvision.utils.make_grid()."""
     fig, ax = setup_plt_figure(**plt_kwargs)

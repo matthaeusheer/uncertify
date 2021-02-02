@@ -267,7 +267,7 @@ def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val
     return results
 
 
-def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloader: DataLoader,
+def run_ood_detection_performance(models_or_model: List[nn.Module], train_dataloader: DataLoader,
                                   val_dataloader: DataLoader, eval_cfg: EvaluationConfig,
                                   results: EvaluationResult) -> EvaluationResult:
     """Run complete OOD detection pipeline and populate the passed results object with the scores and metadata."""
@@ -284,7 +284,7 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
 
             ood_results = {'ood': None, 'in_distribution': None}
             for ood_key, dataloader in zip(['ood', 'in_distribution'], [val_dataloader, train_dataloader]):
-                ood_results[ood_key] = sample_wise_waic_scores(model_ensemble, dataloader, use_n_batches)
+                ood_results[ood_key] = sample_wise_waic_scores(models_or_model, dataloader, use_n_batches)
 
             # When computing the WAIC score, we also add the elbo, kl_div and rec_error scores to the results :-)
             for sub_metric in ['waic', 'elbo', 'kl_div', 'rec_err']:
@@ -304,7 +304,7 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                     ood_dict[ood_key]['is_lesional'] = is_lesional
                 calculate_and_update_ood_performance(sub_metric, ood_dict, eval_cfg, results)
         elif metric_name == 'dose':
-            model = model_ensemble[0]
+            model = models_or_model[0] if isinstance(models_or_model, list) else models_or_model
             # First fit statistics on training data
             statistics_dict = aggregate_slice_wise_statistics(model, train_dataloader,
                                                               eval_cfg.ood_config.dose_statistics,
@@ -321,11 +321,11 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
                                                                                   use_n_batches,
                                                                                   kde_func_dict)
                 # high DoSE score is in-distribution, thus revert
-                ood_dict[ood_key]['ood_scores'] = [-val for val in dose_scores]
+                ood_dict[ood_key]['ood_scores'] = dose_scores
                 ood_dict[ood_key]['is_lesional'] = dose_kde_dict['is_lesional']
             # Make visible in results which statistics have been used
             metric_name = '_'.join([metric_name, '-'.join(eval_cfg.ood_config.dose_statistics)])
-            calculate_and_update_ood_performance(metric_name, ood_dict, eval_cfg, results)
+            calculate_and_update_ood_performance(metric_name, ood_dict, eval_cfg, results, invert_scores=True)
         else:
             raise ValueError(f'Should not happen. Metric not supported!')
 
@@ -334,7 +334,8 @@ def run_ood_detection_performance(model_ensemble: List[nn.Module], train_dataloa
 
 def calculate_and_update_ood_performance(metric_name: str,
                                          ood_dict: Dict[str, Dict[str, Union[List[float], List[bool]]]],
-                                         eval_cfg: EvaluationConfig, results: EvaluationResult) -> None:
+                                         eval_cfg: EvaluationConfig, results: EvaluationResult,
+                                         invert_scores: bool = False) -> None:
     """Calculate OOD Detection performance, update results and create plots for given metric and ood_dict.
     Arguments
         metric_name: used to calculate the correct ood scores based on the metric
@@ -351,8 +352,14 @@ def calculate_and_update_ood_performance(metric_name: str,
                             }
         eval_cfg: used for configuration
         results: this function will update the results object
+        invert_scores: some metrics have high score for in-distr. while others have low, so multiply by -1 if true
 
     """
+    # Only for calculations, will invert back for plotting
+    if invert_scores:
+        for ood_key in ['ood', 'in_distribution']:
+            ood_dict[ood_key]['ood_scores'] = [-val for val in ood_dict[ood_key]['ood_scores']]
+
     y_pred_proba_all = []  # These are the e.g. OOD scores for both in- and OOD data!
     y_true_all = []
     y_pred_proba_lesional = []
@@ -454,7 +461,10 @@ def calculate_and_update_ood_performance(metric_name: str,
         for scores_list, label in zip([ood_scores_healthy, ood_scores_lesional, id_scores_healthy],
                                       [f'healthy OOD', f'lesional OOD', f'healthy in-distr.']):
             if len(scores_list) > 0:
-                arrays.append(np.array(scores_list))
+                array = np.array(scores_list)
+                if invert_scores:
+                    array = -1 * array
+                arrays.append(array)
                 labels.append(label)
 
         fig, _ = plot_multi_histogram(arrays,
@@ -497,6 +507,8 @@ def print_results_from_evaluation_dirs(work_dir_path: Path, run_numbers: list,
         print(f'--- Evaluation summary run {run_number} ---')
         with open(eval_dir_path / eval_file_name, 'r') as infile:
             results = json.load(infile)
+            test_set_name = results['test_set_name']
             if print_results_only:
                 results = {key: val for key, val in results.items() if 'result' in key}
+                results['test_set_name'] = test_set_name
             print(yaml.dump(results))
