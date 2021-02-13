@@ -113,6 +113,8 @@ class CamCanHDF5Dataset(HDF5Dataset):
 class MnistDatasetWrapper(Dataset):
     """Wrapper around MNIST to make it behave like CamCan and Brats, i.e. batch['scan'], instead of batch[0]."""
     def __init__(self, mnist_dataset: Dataset, label: int = None) -> None:
+        self._mask_threshold = 0.2
+
         if label is not None:
             self._mnist_dataset = [item for item in mnist_dataset if item[1] == label]
         else:
@@ -122,11 +124,12 @@ class MnistDatasetWrapper(Dataset):
         return len(self._mnist_dataset)
 
     def __getitem__(self, idx: int) -> dict:
-        return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1]}
+        return {'scan': self._mnist_dataset[idx][0], 'label': self._mnist_dataset[idx][1],
+                'mask': self._mnist_dataset[idx][0] > self._mask_threshold}  # tested by hand, works ok
 
     @property
     def name(self) -> str:
-        return 'mnist'
+        return '(fashion)mnist'
 
 
 class GaussianNoiseDataset(Dataset):
@@ -157,3 +160,8 @@ def train_val_split(dataset: HDF5Dataset, train_fraction: float) -> Tuple[HDF5Da
     return train_set, val_set
 
 
+def has_segmentation(dataset: HDF5Dataset) -> bool:
+    """Check if the dataset has actual ground truth segmentation for lesions."""
+    # NOTE: This simply checks whether the first element in the dataset has GT, not every single one.
+    sample_dict = dataset.__getitem__(idx=0)
+    return 'seg' in sample_dict.keys()

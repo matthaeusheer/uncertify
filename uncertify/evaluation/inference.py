@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from uncertify.evaluation.utils import threshold_batch_to_one_zero, convert_segmentation_to_one_zero
-from uncertify.evaluation.utils import residual_l1, residual_l1_max, mask_background_to_zero
+from uncertify.evaluation.utils import residual_l1, residual_l1_max
 from uncertify.evaluation.median_pool import MedianPool2d
 from uncertify.evaluation.post_processing import BinaryErosion
 from uncertify.utils.custom_types import Tensor
@@ -75,12 +75,12 @@ def yield_inference_batches(data_loader: DataLoader,
                             trained_model: torch.nn.Module,
                             max_batches: int = None,
                             residual_threshold: float = None,
-                            residual_fn: Callable = residual_l1_max,
+                            residual_fn: Callable = residual_l1,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
                             median_filter: MedianPool2d = MedianPool2d(kernel_size=5, padding=2),
                             mask_eroder: BinaryErosion = BinaryErosion(num_iterations=3),
                             progress_bar_suffix: str = '',
-                            manual_seed_val: int = 0) -> Generator[BatchInferenceResult, None, None]:
+                            manual_seed_val: int = None) -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
 
     Arguments:
@@ -189,8 +189,8 @@ def yield_anomaly_predictions(data_loader: DataLoader,
             batch_y_true = batch.segmentation[batch.mask].flatten().numpy()
             anomaly_scores.pixel_wise.y_true.extend(batch_y_true)
 
-            anomaly_score = batch.residual[batch.mask].flatten().numpy()
-            anomaly_scores.pixel_wise.y_pred_proba.extend(anomaly_score)
+            batch_y_pred_proba = batch.residual[batch.mask].flatten().numpy()
+            anomaly_scores.pixel_wise.y_pred_proba.extend(batch_y_pred_proba)
 
             if residual_threshold is not None:
                 batch_y_pred = batch.residuals_thresholded[batch.mask].flatten().numpy()
@@ -221,9 +221,3 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                 for criteria in SliceWiseCriteria:
                     anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true.append(is_lesional)
     return anomaly_scores
-
-
-def infer_latent_space_samples(model: torch.nn.Module, latent_samples: Tensor) -> Tensor:
-    """Run inference only on the decoder part of the model using some samples from the latent space."""
-    with torch.no_grad():
-        return model._decoder(latent_samples)

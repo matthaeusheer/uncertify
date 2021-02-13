@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
+from uncertify.data.datasets import has_segmentation
 from uncertify.evaluation.configs import EvaluationConfig, EvaluationResult, SliceAnomalyDetectionResult
 from uncertify.evaluation.thresholding import threshold_vs_fpr
 from uncertify.evaluation.thresholding import calculate_fpr_minus_accepted
@@ -28,12 +28,13 @@ from uncertify.evaluation.inference import yield_inference_batches
 from uncertify.evaluation.inference import SliceWiseCriteria
 from uncertify.visualization.threshold_search import plot_fpr_vs_residual_threshold
 from uncertify.visualization.model_performance import plot_segmentation_performance_vs_threshold
-from uncertify.visualization.model_performance import plot_confusion_matrix
 from uncertify.visualization.model_performance import plot_roc_curve, plot_precision_recall_curve
 from uncertify.visualization.model_performance import plot_multi_roc_curves, plot_multi_prc_curves
 from uncertify.visualization.histograms import plot_loss_histograms, plot_multi_histogram
+from uncertify.visualization.reconstruction import plot_stacked_scan_reconstruction_batches
 from uncertify.evaluation.configs import PixelAnomalyDetectionResult, SliceAnomalyDetectionResults
 from uncertify.evaluation.configs import OODDetectionResult, OODDetectionResults
+from uncertify.visualization.plotting import save_fig
 from uncertify.common import DATA_DIR_PATH
 
 from typing import List, Dict, Union
@@ -54,6 +55,7 @@ def run_evaluation_pipeline(model: nn.Module,
                             run_anomaly_detection: bool = True,
                             run_loss_histograms: bool = True,
                             run_ood_detection: bool = True,
+                            do_example_imgs: bool = False,
                             ensemble_models: List[nn.Module] = None,
                             comments: list = None) -> EvaluationResult:
     """Main function which runs the complete evaluation pipeline for a trained model and a test dataset."""
@@ -72,6 +74,9 @@ def run_evaluation_pipeline(model: nn.Module,
             results = run_residual_threshold_evaluation(model, train_dataloader, eval_cfg, results)
         else:
             results.pixel_anomaly_result.best_threshold = best_threshold
+
+        if do_example_imgs:
+            create_reconstruction_samples(val_dataloader, model, results)
 
         if run_segmentation:
             results = run_segmentation_performance(eval_cfg, results, val_dataloader, model)
@@ -125,13 +130,26 @@ def run_residual_threshold_evaluation(model: nn.Module, train_dataloader: DataLo
                                                               calculated_threshold=best_threshold,
                                                               thresholds=pixel_thresholds,
                                                               fpr_train=train_false_positive_rates)
-        fpr_vs_threshold_fig.savefig(results.plot_dir_path / 'fpr_vs_threshold.png')
+        save_fig(fpr_vs_threshold_fig, results.plot_dir_path / 'fpr_vs_threshold.png')
     LOG.info(f'Calculated residual threshold: {best_threshold}')
     return results
 
 
+def create_reconstruction_samples(dataloader: DataLoader, model: nn.Module,
+                                  results: EvaluationResult, n_batches: int = 3) -> None:
+    """Run some inference on small sample batch and store result."""
+    LOG.info(f'Creating some example reconstruction plots.')
+    batch_generator = yield_inference_batches(dataloader, model,
+                                              residual_threshold=results.pixel_anomaly_result.best_threshold)
+    plot_stacked_scan_reconstruction_batches(batch_generator, plot_n_batches=n_batches, nrow=8,
+                                             save_dir_path=results.img_dir_path, cut_tensor_to=8, cmap='gray')
+
+
 def run_segmentation_performance(eval_cfg: EvaluationConfig, results: EvaluationResult,
                                  val_dataloader: DataLoader, model: nn.Module) -> EvaluationResult:
+    if not has_segmentation(val_dataloader.dataset):  # TODO: Fix typing issue.
+        LOG.warning(f'Skipping anomaly detection for {val_dataloader.dataset.name}')
+        return results
     perf_cfg = eval_cfg.seg_performance_config
     LOG.info(f'Running segmentation performance '
              f'(residual threshold = {results.pixel_anomaly_result.best_threshold:.2f})')
@@ -155,7 +173,7 @@ def run_segmentation_performance(eval_cfg: EvaluationConfig, results: Evaluation
                                                                                       iou_scores=mean_iou_scores,
                                                                                       iou_stds=std_iou_scores,
                                                                                       train_set_threshold=threshold)
-            segmentation_performance_fig.savefig(results.plot_dir_path / 'seg_performance_vs_thresh.png')
+            save_fig(segmentation_performance_fig, results.plot_dir_path / 'seg_performance_vs_thresh.png')
 
     # If best threshold is calculated already, calculate segmentation score as well
     if results.pixel_anomaly_result.best_threshold is not None:
@@ -174,7 +192,9 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                       results: EvaluationResult) -> EvaluationResult:
     """Perform pixel-level anomaly detection performance evaluation."""
     LOG.info('Calculating pixel-wise anomaly detection performance (ROC, PRC)...')
-
+    if not has_segmentation(val_dataloader.dataset):  # TODO: Fix typing issue.
+        LOG.warning(f'Skipping anomaly detection for {val_dataloader.dataset.name}')
+        return results
     anomaly_scores = yield_anomaly_predictions(val_dataloader, model,
                                                eval_config.use_n_batches, results.pixel_anomaly_result.best_threshold)
 
@@ -192,13 +212,13 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                  # calculated_threshold=results.pixel_anomaly_result.best_threshold,
                                  # thresholds=threshs,
                                  title=f'ROC Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
-        roc_fig.savefig(results.plot_dir_path / f'pixel_wise_roc.png')
+        save_fig(roc_fig, results.plot_dir_path / f'pixel_wise_roc.png')
 
         prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
                                               # calculated_threshold=results.pixel_anomaly_result.best_threshold,
                                               # thresholds=threshs,
                                               title=f'PR Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
-        prc_fig.savefig(results.plot_dir_path / 'pixel_wise_prc.png')
+        save_fig(prc_fig, results.plot_dir_path / 'pixel_wise_prc.png')
 
         """ Buggy :-(
         if anomaly_scores.pixel_wise.y_pred is not None:
@@ -230,14 +250,14 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
             roc_fig = plot_roc_curve(fpr, tpr, au_roc,
                                      title=f'ROC Curve Sample-wise Anomaly Detection [{str(criteria.name)}]',
                                      figsize=(6, 6))
-            roc_fig.savefig(results.plot_dir_path / f'sample_wise_roc_{str(criteria.name)}.png')
+            save_fig(roc_fig, results.plot_dir_path / f'sample_wise_roc_{str(criteria.name)}.png')
             plt.close(roc_fig)
 
             prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
                                                   title=f'PR Curve Sample-wise Anomaly Detection '
                                                         f'[{str(criteria.name)}]',
                                                   figsize=(6, 6))
-            prc_fig.savefig(results.plot_dir_path / f'sample_wise_prc_{str(criteria.name)}.png')
+            save_fig(prc_fig, results.plot_dir_path / f'sample_wise_prc_{str(criteria.name)}.png')
             plt.close(prc_fig)
 
     return results
@@ -263,7 +283,7 @@ def run_loss_term_histograms(model: nn.Module, train_dataloader: DataLoader, val
                                          figsize=(15, 6), ylabel='Frequency', plot_density=True,
                                          show_data_ticks=False, kde_bandwidth=[0.009, 0.009 * 5], show_histograms=False)
         for idx, (fig, _) in enumerate(figs_axes):
-            fig.savefig(results.plot_dir_path / f'loss_term_distributions_{idx}.png')
+            save_fig(fig, results.plot_dir_path / f'loss_term_distributions_{idx}.png')
     return results
 
 
@@ -444,8 +464,8 @@ def calculate_and_update_ood_performance(metric_name: str,
                                         title=f'{metric_name} ROC Curve OOD Detection', figsize=(6, 6))
         prc_fig = plot_multi_prc_curves(recalls, precisions, au_prcs, labels,
                                         title=f'{metric_name} PR Curve OOD Detection', figsize=(6, 6))
-        roc_fig.savefig(results.plot_dir_path / f'ood_roc_{metric_name}.png')
-        prc_fig.savefig(results.plot_dir_path / f'ood_prc_{metric_name}.png')
+        save_fig(roc_fig, results.plot_dir_path / f'ood_roc_{metric_name}.png')
+        save_fig(prc_fig, results.plot_dir_path / f'ood_prc_{metric_name}.png')
         plt.close(roc_fig)
         plt.close(prc_fig)
 
@@ -473,7 +493,7 @@ def calculate_and_update_ood_performance(metric_name: str,
                                       plot_density=False,
                                       title=f'OOD scores {results.test_set_name}',
                                       xlabel=f'{metric_name}')
-        fig.savefig(results.plot_dir_path / f'ood_scores_{metric_name}.png')
+        save_fig(fig, results.plot_dir_path / f'ood_scores_{metric_name}.png')
         plt.close(fig)
 
 

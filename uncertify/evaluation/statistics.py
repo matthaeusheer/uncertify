@@ -175,7 +175,7 @@ def rec_error_entropy_batch_stat(batch: BatchInferenceResult, normalize_kind: st
             entropy_array[idx] = get_entropy(image[0], mask[0])  # Use first (only) channel
         else:
             minimal_indices.append(idx)
-    # For empty mask images, set entropy to maximum entropy encountered in batch
+    # For empty mask images, set entropy to minimum entropy encountered in batch
     min_entropy = min(entropy_array)
     entropy_array[minimal_indices] = min_entropy
     return entropy_array

@@ -4,19 +4,29 @@ import torch
 from uncertify.data.datasets import UncertifyDataset
 from uncertify.data.utils import gauss_2d_tensor_image, gaussian
 
+from typing import Tuple
+
 
 class BrainGaussBlobDataset(UncertifyDataset):
     """
     This dataset applies artificial high intensity Gaussian blobs to an original wrapped dataset simulating lesions.
     """
-    def __init__(self, wrapped_dataset: UncertifyDataset) -> None:
+    def __init__(self,
+                 wrapped_dataset: UncertifyDataset,
+                 min_pixels_to_consider: int = None,
+                 max_sample_tries: int = None,
+                 blob_weight: int = None,
+                 std_min_max: Tuple[int, int] = None,
+                 lesion_probability: float = None) -> None:
         super().__init__()
         self._wrapped_dataset = wrapped_dataset
-        self._min_pixels_to_consider = 100
-        self._max_sample_tries = 100
-        self._blob_weight = 1000
-        self._std_min_max = (4, 10)
-        self._lesion_probability = 0.5
+
+        # Defining some default values if arguments not given
+        self._min_pixels_to_consider = 100 if not min_pixels_to_consider else min_pixels_to_consider
+        self._max_sample_tries = 100 if not max_sample_tries else max_sample_tries
+        self._blob_weight = 1000 if not blob_weight else blob_weight
+        self._std_min_max = (4, 10) if not std_min_max else std_min_max
+        self._lesion_probability = 0.75 if not lesion_probability else lesion_probability
 
     @property
     def name(self) -> str:

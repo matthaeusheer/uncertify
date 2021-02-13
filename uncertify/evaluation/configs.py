@@ -29,8 +29,8 @@ class PixelThresholdSearchConfig:
 @dataclass
 class PerformanceEvaluationConfig:
     # Min, max, and number of values for segmentation performance vs threshold calculations
-    min_val: float = 0.5
-    max_val: float = 2.5
+    min_val: float = 0.3
+    max_val: float = 1.5
     num_values: int = 10
     do_iou: bool = False
     do_multiple_thresholds: bool = True
@@ -39,7 +39,7 @@ class PerformanceEvaluationConfig:
 @dataclass
 class OodEvaluationConfig:
     metrics: tuple = ('dose', )  # 'waic'
-    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo') #, 'kl_div', 'elbo', 'entropy')  # ('rec_err', 'kl_div', 'elbo')
+    dose_statistics: tuple = ('rec_err', 'kl_div', 'elbo', 'entropy') #, 'kl_div', 'elbo', 'entropy')  # ('rec_err', 'kl_div', 'elbo')
 
 
 @dataclass

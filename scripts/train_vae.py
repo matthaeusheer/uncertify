@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '-d',
         '--dataset',
-        choices=['mnist', 'camcan'],
+        choices=['mnist', 'camcan', 'fashion'],
         default='camcan',
         help='Which dataset to use for training.')
     parser.add_argument(
@@ -205,10 +205,12 @@ def main(args: argparse.Namespace) -> None:
     if args.dataset == 'mnist':
         transform = MNIST_DEFAULT_TRANSFORM
         dataset_type = DatasetType.MNIST
-
     elif args.dataset == 'camcan':
         transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
         dataset_type = DatasetType.CAMCAN
+    elif args.dataset == 'fashion':
+        transform = MNIST_DEFAULT_TRANSFORM
+        dataset_type = DatasetType.FASHION_MNIST
     else:
         raise ValueError(f'Dataset arg "{args.dataset}" not supported.')
 
@@ -240,6 +242,9 @@ def main(args: argparse.Namespace) -> None:
         elif 'noise' in name:
             transform = None
             dataset_type = DatasetType.GAUSS_NOISE
+        elif 'fashion' in name:
+            transform = MNIST_DEFAULT_TRANSFORM
+            dataset_type = DatasetType.FASHION_MNIST
         else:
             raise ValueError(f'OOD set name {name} not supported.')
         _, ood_val_dataloader = dataloader_factory(dataset_type,

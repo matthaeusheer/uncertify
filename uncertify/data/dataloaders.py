@@ -23,6 +23,7 @@ class DatasetType(Enum):
     GAUSS_NOISE = 4
     IBSR = 5
     CANDI = 6
+    FASHION_MNIST = 7
 
 
 BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
@@ -34,7 +35,8 @@ BRATS_CAMCAN_DEFAULT_TRANSFORM = torchvision.transforms.Compose([
 
 MNIST_DEFAULT_TRANSFORM = torchvision.transforms.Compose(
     [torchvision.transforms.Resize((128, 128)),
-     torchvision.transforms.ToTensor()]
+     torchvision.transforms.ToTensor(),
+     torchvision.transforms.Normalize([0], [1])]
 )
 
 
@@ -56,6 +58,12 @@ def dataloader_factory(dataset_type: DatasetType, batch_size: int,
     if dataset_type.value == DatasetType.MNIST.value:
         train_dataloader = mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform, **kwargs)
         val_dataloader = mnist_val_dataloader(batch_size, shuffle_val, num_workers, transform, **kwargs)
+
+    elif dataset_type.value == DatasetType.FASHION_MNIST.value:
+        train_dataloader = fashion_mnist_train_dataloader(batch_size, shuffle_train, num_workers, transform,
+                                                          add_gauss_blobs, **kwargs)
+        val_dataloader = fashion_mnist_val_dataloader(batch_size, shuffle_val, num_workers, transform,
+                                                      add_gauss_blobs, **kwargs)
 
     elif dataset_type.value == DatasetType.BRATS17.value:
         assert val_set_path is not None, f'For BraTS need to provide a validation dataset path!'
@@ -148,5 +156,42 @@ def mnist_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
                       num_workers=num_workers)
 
 
+def fashion_mnist_train_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                                   transform: Any = None, add_gauss_blobs: bool = False, **kwargs) -> DataLoader:
+    if transform is None:
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
+                                                    torchvision.transforms.ToTensor()])
+    train_set = torchvision.datasets.FashionMNIST(root=DATA_DIR_PATH / 'fashion_mnist_data',
+                                                  train=True,
+                                                  download=True,
+                                                  transform=transform)
+    train_set = MnistDatasetWrapper(mnist_dataset=train_set, label=kwargs.get('mnist_label', None))
+    if add_gauss_blobs:
+        train_set = BrainGaussBlobDataset(train_set, blob_weight=300, std_min_max=(4, 30))
+    return DataLoader(train_set,
+                      batch_size=batch_size,
+                      shuffle=shuffle,
+                      num_workers=num_workers)
+
+
+def fashion_mnist_val_dataloader(batch_size: int, shuffle: bool, num_workers: int = 0,
+                                 transform: Any = None, add_gauss_blobs: bool = False, **kwargs) -> DataLoader:
+    if transform is None:
+        transform = torchvision.transforms.Compose([torchvision.transforms.Resize((32, 32)),
+                                                    torchvision.transforms.ToTensor()])
+    val_set = torchvision.datasets.FashionMNIST(root=DATA_DIR_PATH / 'fashion_mnist_data',
+                                                train=False,
+                                                download=True,
+                                                transform=transform)
+    val_set = MnistDatasetWrapper(mnist_dataset=val_set, label=kwargs.get('fashion_mnist_label', None))
+    if add_gauss_blobs:
+        val_set = BrainGaussBlobDataset(val_set, blob_weight=300, std_min_max=(4, 30))
+    return DataLoader(val_set,
+                      batch_size=batch_size,
+                      shuffle=shuffle,
+                      num_workers=num_workers)
+
+
 def print_dataloader_info(dataloader: DataLoader, name: str) -> None:
-    print(f'{name:18} dataloader: {len(dataloader):5} batches (batch_size: {dataloader.batch_size}) -> {len(dataloader) * dataloader.batch_size:10} samples.')
+    print(
+        f'{name:18} dataloader: {len(dataloader):5} batches (batch_size: {dataloader.batch_size}) -> {len(dataloader) * dataloader.batch_size:10} samples.')

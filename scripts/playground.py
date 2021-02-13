@@ -46,7 +46,7 @@ from uncertify.visualization.histograms import plot_multi_histogram
 from uncertify.visualization.model_performance import setup_roc_prc_fig, plot_roc_curve, plot_precision_recall_curve, \
     plot_confusion_matrix
 from uncertify.visualization.ood_scores import plot_ood_scores
-from uncertify.visualization.entropy import plot_entropy_samples_over_range
+from uncertify.visualization.dose import plot_entropy_samples_over_range
 
 from uncertify.common import DATA_DIR_PATH, HD_DATA_PATH
 

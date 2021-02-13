@@ -33,3 +33,9 @@ def latent_space_2d_grid(dim1: int, dim2: int, latent_space_dim: int = 128, grid
 def sample_from_gauss_prior(n_samples: int, latent_space_dim: int) -> Tensor:
     """Returns a (n_samples, latent_space_dim)-shaped tensor with samples from the Gaussian prior latent space."""
     return torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dim)))
+
+
+def infer_latent_space_samples(model: torch.nn.Module, latent_samples: Tensor) -> Tensor:
+    """Run inference only on the decoder part of the model using some samples from the latent space."""
+    with torch.no_grad():
+        return model._decoder(latent_samples)
