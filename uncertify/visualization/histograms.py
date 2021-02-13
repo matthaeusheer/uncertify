@@ -9,7 +9,7 @@ from uncertify.evaluation.inference import BatchInferenceResult
 
 from typing import Tuple, List, Iterable, Generator, Dict, Union
 
-DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=False, bins=30)
+DEFAULT_HIST_KWARGS = dict(histtype='stepfilled', alpha=0.5, density=False, bins=40)
 
 
 def plot_multi_histogram(arrays: List[np.ndarray],
@@ -18,7 +18,6 @@ def plot_multi_histogram(arrays: List[np.ndarray],
                          kde_bandwidth: Union[float, List[float]] = 0.005,
                          show_data_ticks: bool = False,
                          hist_kwargs: dict = None,
-                         separate_legend_fig: bool = False,
                          **plt_kwargs) -> Tuple[plt.Figure, plt.Axes]:
     """Create a figure with a histogram consisting multiple distinct distributions.
     Args:
@@ -116,9 +115,9 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
     kde_bandwidth = kwargs.get('kde_bandwidth', None)
     kwargs.pop('kde_bandwidth')
     # Add labels if you want to include them in some histogram plot instead of None
-    fig1, ax2 = plot_multi_histogram(kld_arrays, labels=None, xlabel='$D_{KL}$',
-                                     kde_bandwidth=kde_bandwidth[0], separate_legend_fig=True, **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, labels=None, xlabel='$\ell_{1}$',
+    fig1, ax2 = plot_multi_histogram(kld_arrays, labels=kld_labels, xlabel='$D_{KL}$',
+                                     kde_bandwidth=kde_bandwidth[0], **kwargs)
+    fig2, ax2 = plot_multi_histogram(rec_arrays, labels=rec_labels, xlabel='$\ell_{1}$',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)
     fig3, ax3 = plot_multi_histogram(elbo_arrays, labels=elbo_labels, xlabel='$\mathcal{L}$',
                                      kde_bandwidth=kde_bandwidth[1], **kwargs)

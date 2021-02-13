@@ -4,6 +4,7 @@ to be re-defined in every notebook to keep stuff consistent.
 """
 from dataclasses import dataclass
 from pathlib import Path
+import logging
 
 import torchvision
 from torch.utils.data import DataLoader
@@ -12,9 +13,12 @@ from uncertify.data.dataloaders import dataloader_factory, DatasetType
 from uncertify.data.dataloaders import print_dataloader_info
 from uncertify.data.transforms import H_FLIP_TRANSFORM, V_FLIP_TRANSFORM
 from uncertify.data.datasets import GaussianNoiseDataset
+from uncertify.data.dataloaders import MNIST_DEFAULT_TRANSFORM
 from uncertify.common import DATA_DIR_PATH, HD_DATA_PATH
 
 from typing import Dict, List
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,10 +30,10 @@ class DefaultDataloaderParams:
 
 @dataclass
 class DefaultDatasetPaths:
-    brats_t2_path: Path = HD_DATA_PATH / 'processed/brats17_t2_bc_std_bv3.5.hdf5'
+    brats_t2_path: Path = DATA_DIR_PATH / 'processed/brats17_t2_bc_std_bv3.5.hdf5'
     brats_t2_hm_path: Path = HD_DATA_PATH / 'processed/brats17_t2_hm_bc_std_bv3.5.hdf5'
-    brats_t1_path: Path = HD_DATA_PATH / 'processed/brats17_t1_bc_std_bv3.5.hdf5'
-    brats_t1_hm_path: Path = HD_DATA_PATH / 'processed/brats17_t1_hm_bc_std_bv-3.5.hdf5'
+    brats_t1_path: Path = DATA_DIR_PATH / 'processed/brats17_t1_bc_std_bv3.5.hdf5'
+    brats_t1_hm_path: Path = HD_DATA_PATH / 'processed/brats17_t1_hm_bc_std_bv3.5.hdf5'
     camcan_t2_val_path: Path = DATA_DIR_PATH / 'processed/camcan_val_t2_hm_std_bv3.5_xe.hdf5'
     camcan_t2_train_path: Path = DATA_DIR_PATH / 'processed/camcan_train_t2_hm_std_bv3.5_xe.hdf5'
     ibsr_t1_train_path: Path = HD_DATA_PATH / 'processed/ibsr_train_t1_std_bv3.5_l10_xe.hdf5'
@@ -84,7 +88,7 @@ def default_dataloader_dict_factory(batch_size: int = 155, num_workers: int = 12
                                                                                           batch_size=params.batch_size,
                                                                                           val_set_path=paths.camcan_t2_val_path,
                                                                                           train_set_path=paths.camcan_t2_train_path,
-                                                                                          shuffle_val=False,
+                                                                                          shuffle_val=params.shuffle_val,
                                                                                           shuffle_train=True,
                                                                                           num_workers=params.num_workers,
                                                                                           add_gauss_blobs=True)
@@ -112,6 +116,16 @@ def default_dataloader_dict_factory(batch_size: int = 155, num_workers: int = 12
                                                      torchvision.transforms.Resize((128, 128)),
                                                      torchvision.transforms.ToTensor()
                                                  ]))
+    fashion_mnist_train_dataloader, fashion_mnist_val_dataloader = dataloader_factory(
+        DatasetType.FASHION_MNIST,
+        batch_size=params.batch_size,
+        transform=MNIST_DEFAULT_TRANSFORM)
+
+    fashion_mnist_art_train_dataloader, fashion_mnist_art_val_dataloader = dataloader_factory(
+        DatasetType.FASHION_MNIST,
+        batch_size=params.batch_size,
+        transform=MNIST_DEFAULT_TRANSFORM,
+        add_gauss_blobs=True)
 
     dataloader_dict = {
         'CamCAN train': camcan_train_dataloader,
@@ -123,7 +137,11 @@ def default_dataloader_dict_factory(batch_size: int = 155, num_workers: int = 12
         'BraTS T2 HM val': brats_val_t2_hm_dataloader,
         'BraTS T1 HM val': brats_val_t1_hm_dataloader,
         'Gaussian noise': noise_dataloader,
-        'MNIST': mnist_val_dataloader,
+        'MNIST val': mnist_val_dataloader,
+        'FashionMNIST train': fashion_mnist_train_dataloader,
+        'FashionMNIST val': fashion_mnist_val_dataloader,
+        'FashionMNIST art train': fashion_mnist_art_train_dataloader,
+        'FashionMNIST art val': fashion_mnist_art_val_dataloader,
         'BraTS T2 HFlip': brats_val_t2_hflip_dataloader,
         'BraTS T2 VFlip': brats_val_t2_vflip_dataloader,
         'IBSR T1 train': ibsr_train_t1_dataloader,
@@ -131,7 +149,9 @@ def default_dataloader_dict_factory(batch_size: int = 155, num_workers: int = 12
         'CANDI T1 train': candi_train_t1_dataloader,
         'CANDI T1 val': candi_val_t1_dataloader,
     }
-
+    LOG.info(f'Created {len(dataloader_dict)} default dataloaders (batch_size: {batch_size}):')
+    LOG.info(f'{" | ".join(dataloader_dict.keys())}')
+    print_dataloader_dict(dataloader_dict)
     return dataloader_dict
 
 

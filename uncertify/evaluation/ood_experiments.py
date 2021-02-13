@@ -52,7 +52,7 @@ def run_ood_evaluations(train_dataloader: DataLoader, dataloader_dict: dict,
 
 def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train_dataloader: DataLoader = None,
                         num_batches: int = None, ood_metrics: Tuple[str] = ('waic', 'dose'),
-                        dose_statistics: Tuple[str] = None) -> dict:
+                        dose_statistics: Tuple[str] = None) -> Tuple[dict, dict]:
     """Run OOD detection and organise output such that healthy vs. lesional analysis can be performed.
 
     Returns
@@ -81,18 +81,20 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                                                        data_loader=test_data_loader,
                                                        max_n_batches=num_batches,
                                                        return_slices=True)
-                scans = waic_results.slice_wise_scans
                 slice_wise_ood_scores = waic_results.slice_wise_waic_scores
                 slice_wise_is_lesional = waic_results.slice_wise_is_lesional
+                scans = waic_results.slice_wise_scans
                 segmentations = waic_results.slice_wise_segmentations
                 masks = waic_results.slice_wise_masks
             elif metric == 'dose':
-                slice_wise_ood_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(train_dataloader,
-                                                                                            test_data_loader,
-                                                                                            ensemble_models[0],
-                                                                                            dose_statistics,
-                                                                                            max_n_batches=num_batches,
-                                                                                            kde_func_dict=kde_func_dict)
+                slice_wise_ood_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(
+                    train_dataloader,
+                    test_data_loader,
+                    ensemble_models[0],
+                    dose_statistics,
+                    max_n_batches=num_batches,
+                    kde_func_dict=kde_func_dict)
+
                 slice_wise_is_lesional = dose_kde_dict['is_lesional']
                 scans = dose_kde_dict['scans']
                 segmentations = dose_kde_dict['segmentations']
@@ -111,8 +113,12 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
             # For DoSE track organized individual dose scores as well
             dose_kde_healthy = defaultdict(list)
             dose_kde_lesional = defaultdict(list)
+            dose_stat_healthy = defaultdict(list)
+            dose_stat_lesional = defaultdict(list)
+
             for idx in range(len(slice_wise_ood_scores)):
                 is_lesional_slice = slice_wise_is_lesional[idx]
+
                 if is_lesional_slice:
                     lesional_scores.append(slice_wise_ood_scores[idx])
                     if scans is not None:
@@ -121,6 +127,7 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                         lesional_gt.append(segmentations[idx])
                     if metric == 'dose':
                         for statistic in dose_statistics:
+                            dose_stat_lesional[statistic].append(statistics_dict[statistic][idx])
                             dose_kde_lesional[statistic].append(dose_kde_dict[statistic][idx])
                 else:
                     healthy_scores.append(slice_wise_ood_scores[idx])
@@ -130,6 +137,7 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                         healthy_gt.append(segmentations[idx])
                     if metric == 'dose':
                         for statistic in dose_statistics:
+                            dose_stat_healthy[statistic].append(statistics_dict[statistic][idx])
                             dose_kde_healthy[statistic].append(dose_kde_dict[statistic][idx])
 
             dataset_ood_dict = {'all': slice_wise_ood_scores,
@@ -141,6 +149,8 @@ def run_ood_to_ood_dict(test_dataloader_dict: dict, ensemble_models: list, train
                                 'healthy_segmentations': healthy_gt,
                                 'lesional_segmentations': lesional_gt,
                                 'dose_kde_healthy': dose_kde_healthy,
-                                'dose_kde_lesional': dose_kde_lesional}
+                                'dose_kde_lesional': dose_kde_lesional,
+                                'dose_stat_healthy': dose_stat_healthy,
+                                'dose_stat_lesional': dose_stat_lesional}
             metrics_ood_dict[metric][name] = dataset_ood_dict
-    return metrics_ood_dict
+    return metrics_ood_dict, statistics_dict

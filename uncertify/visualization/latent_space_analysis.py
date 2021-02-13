@@ -8,12 +8,13 @@ import torch
 from tqdm import tqdm
 import umap
 
-from uncertify.evaluation.inference import infer_latent_space_samples
+from uncertify.evaluation.latent_space_analysis import infer_latent_space_samples
 from uncertify.visualization.reconstruction import plot_vae_output
 from uncertify.visualization.plotting import save_fig, setup_plt_figure
 from uncertify.evaluation import latent_space_analysis
 from uncertify.evaluation.inference import BatchInferenceResult
 from uncertify.utils.sampling import random_uniform_ring
+from uncertify.visualization.histograms import plot_multi_histogram
 
 from typing import Tuple, Iterable, Generator
 
@@ -180,7 +181,7 @@ def plot_latent_samples_from_ring(model: torch.nn.Module, n_samples: int = 16, l
     return fig
 
 
-def plot_ring_samples() -> plt.Figure:
+def plot_ring_samples() -> None:
     radii = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     center = (0, 0)
     n_samples = 1600
@@ -195,3 +196,11 @@ def plot_ring_samples() -> plt.Figure:
         ax.set_aspect('equal')
     ax.grid()
     plt.show()
+
+
+def plot_gaussian_annulus_distribution(latent_space_dims: int = 128, n_samples: int = 1000) -> None:
+    latent_samples = torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dims,)))
+    norms = torch.norm(latent_samples, dim=1).numpy()
+
+    plot_multi_histogram([norms], ['Distance to origin'], show_data_ticks=True, show_histograms=True)
+

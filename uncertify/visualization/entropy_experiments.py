@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 import numpy as np
 import seaborn as sns
+from tqdm import tqdm
 
 from uncertify.evaluation.entropy import get_entropy
 from uncertify.data.utils import gauss_2d_tensor_image
@@ -61,6 +62,7 @@ class ExampleFactory:
     def _checker_board(self, normalize: bool) -> Tensor:
         def checkerboard(shape):
             return np.indices(shape).sum(axis=0) % 2
+
         image = torch.Tensor(checkerboard(self._shape))
         if normalize:
             image /= torch.sum(image)
@@ -86,30 +88,36 @@ class ExampleFactory:
         return images
 
 
-def plot_image_and_entropy(image: torch.Tensor, mask: torch.Tensor = None) -> None:
+def plot_image_and_entropy(image: torch.Tensor, mask: torch.Tensor = None, **kwargs) -> None:
     """Plot a single 2D torch tensor and display entropy."""
     fig, ax = plt.subplots(figsize=(5, 5))
     if mask is None:
         mask = torch.ones_like(image).type(torch.BoolTensor)
     e = get_entropy(image, mask)
-    im = ax.imshow(image, cmap='gray')
+    im = ax.imshow(image, cmap='gray', **kwargs)
     ax.annotate(f'{e:.2f}', (10, 20), color='red', fontsize=20)
     ax.axis('off')
     plt.colorbar(im)
     plt.show()
 
 
-def plot_images_and_entropy(images: List[torch.Tensor], masks: List[torch.Tensor] = None) -> None:
+def plot_images_and_entropy(images: List[torch.Tensor], masks: List[torch.Tensor] = None,
+                            entropy_array=None, **kwargs) -> None:
     """Plot a grid of images and display entropies."""
     n_images = len(images)
     assert math.isqrt(n_images), f'Number of images should be square to arrange in grid.'
-    fig, axes = plt.subplots(figsize=(10, 10), nrows=int(math.sqrt(n_images)), ncols=int(math.sqrt(n_images)))
-    for idx, (image, ax) in enumerate(zip(images, axes.reshape(-1))):
+    fig, axes = plt.subplots(nrows=int(math.sqrt(n_images)), ncols=int(math.sqrt(n_images)),
+                             figsize=kwargs.get('figsize'))
+    for idx, (image, ax) in tqdm(enumerate(zip(images, axes.reshape(-1))), desc=f'Plotting entropies', initial=1,
+                                 total=n_images):
         mask = masks[idx] if masks is not None else torch.ones_like(image).type(torch.BoolTensor)
-        e = get_entropy(image, mask)
-        ax.imshow(image, cmap='gray')
+        if entropy_array is None:
+            entropy = get_entropy(image, mask)
+        else:
+            entropy = entropy_array[idx]
+        ax.imshow(image, cmap='gray', vmin=kwargs.get('vmin'), vmax=kwargs.get('vmax'))
         ax.axis('off')
-        ax.annotate(f'{e:.2f}', (10, 20), color='red', fontsize=10)
+        ax.annotate(f'{entropy:.2f}', (10, 20), color='red', fontsize=12)
     plt.tight_layout()
     plt.show()
 
@@ -174,5 +182,3 @@ def plot_entropy_segmentations(input_batch: dict, add_circles: bool = False, add
     sns_ax.set_ylim([0, 1])
 
     plt.show()
-
-
