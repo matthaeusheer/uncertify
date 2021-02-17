@@ -80,7 +80,12 @@ def plot_roc_curve(fpr: Union[list, List[list]], tpr: Union[list, List[list]], a
                    calculated_threshold: float = None, thresholds: Iterable = None, **kwargs) -> plt.Figure:
     """Plots the ROC curve."""
     fig, ax = setup_plt_figure(xlabel='False Positive Rate', ylabel='True Positive Rate', **kwargs)
-    ax.plot(fpr, tpr, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUC = {auc:.2f}')
+    ax.set_xticks([0, 0.5, 1])
+    ax.set_yticks([0, 0.5, 1])
+    ax.tick_params(axis='x', pad=6)
+    ax.tick_params(axis='y', pad=7)
+
+    ax.plot(fpr, tpr, linewidth=2, alpha=0.7, color='green', label=f'AUC={auc:.2f}')
     ax.plot([0, 1], [0, 1], linewidth=1, linestyle='--', color='gray')
 
     if calculated_threshold is not None:
@@ -92,7 +97,10 @@ def plot_roc_curve(fpr: Union[list, List[list]], tpr: Union[list, List[list]], a
             ax.plot([fpr[idx]], [tpr[idx]], 'o', color='cyan')
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    ax.legend()
+
+    leg = ax.legend(handlelength=0, handletextpad=0, frameon=False)
+    for item in leg.legendHandles:
+        item.set_visible(False)
     return fig
 
 
@@ -101,7 +109,12 @@ def plot_precision_recall_curve(precision: Iterable, recall: Iterable, auprc: fl
                                 **kwargs) -> plt.Figure:
     """Plots the PRC curve."""
     fig, ax = setup_plt_figure(xlabel='Recall', ylabel='Precision', **kwargs)
-    ax.plot(precision, recall, linewidth=2, alpha=0.7, color='green', label=f'anomaly AUPRC = {auprc:.2f}')
+    ax.set_xticks([0, 0.5, 1])
+    ax.set_yticks([0, 0.5, 1])
+    ax.tick_params(axis='x', pad=6)
+    ax.tick_params(axis='y', pad=7)
+
+    ax.plot(precision, recall, linewidth=2, alpha=0.7, color='green', label=f'AUPRC={auprc:.2f}')
 
     if calculated_threshold is not None:
         if thresholds is None:
@@ -112,7 +125,9 @@ def plot_precision_recall_curve(precision: Iterable, recall: Iterable, auprc: fl
             ax.plot([precision[idx]], [recall[idx]], 'o', color='cyan')
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    ax.legend()
+    leg = ax.legend(handlelength=0, handletextpad=0, frameon=False)
+    for item in leg.legendHandles:
+        item.set_visible(False)
     return fig
 
 

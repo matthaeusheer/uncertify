@@ -61,7 +61,8 @@ class VariationalAutoEncoder(pl.LightningModule):
         mu, log_var = self._encoder(img_tensor)
         latent_code = self._reparameterize(mu, log_var)
         reconstruction = self._decoder(latent_code)
-        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction, img_tensor, mask,
+        total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err = self.loss_function(reconstruction,
+                                                                                    img_tensor, mask,
                                                                                     mu, log_var)
         return reconstruction, mu, log_var, total_loss, mean_kl_div, mean_rec_err, kl_div, rec_err, latent_code
 
@@ -149,12 +150,9 @@ class VariationalAutoEncoder(pl.LightningModule):
                       beta: float = 1.0, train_step: int = None):
         masking_enabled = mask is not None
         mask = mask if masking_enabled else torch.ones_like(observation, dtype=torch.bool)
-        # When masking enabled dampen contribution of out-of-mask pixels (only 10% as important in rec error)
-        # weights_mask = torch.ones_like(observation) if not masking_enabled else (~mask) * 0.1 + mask
 
         # Reconstruction Error
         slice_rec_err = torch_functional.l1_loss(observation*mask, reconstruction*mask, reduction='none')
-        # slice_rec_err *= weights_mask
         slice_rec_err = torch.sum(slice_rec_err, dim=(1, 2, 3))
         slice_wise_non_empty = torch.sum(mask, dim=(1, 2, 3))
         slice_wise_non_empty[slice_wise_non_empty == 0] = 1  # for empty masks

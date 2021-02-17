@@ -192,13 +192,13 @@ def create_dataset(config: BratsConfig) -> None:
 
         image_modality = get_image_modality(config)
         if config.do_histogram_matching:
-            if sample_dir_path.name in config.ref_paths[image_modality]['img'].name:
+            if sample_dir_path.val_set_name in config.ref_paths[image_modality]['img'].name:
                 n_processed += 1  # Could encounter a sample which we have not processed yet. Dataset will be size - 1
                 continue  # Exclude sample we match against!
         for modality in [mod for mod in config.modalities if config.modalities[mod] is True]:
 
             # Add mask which is always done
-            nii_mask_name = create_nii_file_name(sample_dir_path.name, image_modality,
+            nii_mask_name = create_nii_file_name(sample_dir_path.val_set_name, image_modality,
                                                  is_mask=True, is_unbiased=False, is_processed=True)
             if config.print_debug:
                 print(f'Loading mask {nii_mask_name}')
@@ -210,7 +210,7 @@ def create_dataset(config: BratsConfig) -> None:
 
             # Add other modality (segmentation and possibly another one)
             dataset_key = 'seg' if modality == 'seg' else 'scan'
-            nii_slices_name = create_nii_file_name(sample_dir_path.name, modality,
+            nii_slices_name = create_nii_file_name(sample_dir_path.val_set_name, modality,
                                                    is_mask=False, is_unbiased=config.do_bias_correction,
                                                    is_processed=True)
             if config.print_debug:

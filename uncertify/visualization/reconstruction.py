@@ -28,7 +28,7 @@ MAX_VAL = 2
 def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInferenceResult, None, None],
                                              plot_n_batches: int = 3, nrow: int = 8, show_mask: bool = False,
                                              save_dir_path: Path = None, cut_tensor_to: int = None,
-                                             mask_background: bool = True, **kwargs) -> None:
+                                             mask_background: bool = True, close_fig: bool = False, **kwargs) -> None:
     """Plot the scan and reconstruction batches. Horizontally aligned are the samples from one batch.
     Vertically aligned are input image, ground truth segmentation, reconstruction, residual image, residual with
     applied threshold, ground truth and predicted segmentation in same image.
@@ -39,6 +39,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
         nrow: numbers of samples in one row, default is 8
         show_mask: plots the brain mask
         cut_tensor_to: choose 8 if you need only first 8 samples but for plotting but the original tensor is way larger
+        close_fig: if True, will not show in notebook, handy for use in large pipeline
         kwargs: additional keyword arguments for plotting functions
     """
     if save_dir_path is not None:
@@ -72,11 +73,13 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
             grid = torchvision.utils.make_grid(stacked, padding=0, normalize=False, nrow=nrow)
             describe = scipy.stats.describe(grid.numpy().flatten())
             print_scipy_stats_description(describe, 'normalized_grid')
-            fig, ax = imshow_grid(grid, one_channel=True, vmax=1.0, vmin=0.0, plt_show=True, **kwargs)
+            fig, ax = imshow_grid(grid, one_channel=True, vmax=1.0, vmin=0.0, plt_show=False, **kwargs)
             ax.set_axis_off()
             if save_dir_path is not None:
                 img_file_name = f'batch_{batch_idx}.png'
                 save_fig(fig, save_dir_path / img_file_name)
+                if close_fig:
+                    plt.close(fig)
 
 
 def plot_vae_output(decoder_output_batch: Tensor, nrow: int = 8, transpose_grid: bool = False,

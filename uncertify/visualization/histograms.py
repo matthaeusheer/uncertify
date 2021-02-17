@@ -70,7 +70,7 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
         kwargs:
             kde_bandwidth: a list of bandwidths to use for each type of plot
     """
-    # Prepare dictionaries holding sample-wise losses for different data loaders
+    # Prepare dictionaries holding sample-wise losses for different data loaders (split in healthy / lesional)
     kl_divs = defaultdict(list)
     rec_errors = defaultdict(list)
     elbos = defaultdict(list)
@@ -80,23 +80,30 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
         for batch in generator:
             has_ground_truth = batch.segmentation is not None
             if has_ground_truth:
-                for segmentation, mask, kl_div, rec_err in zip(batch.segmentation, batch.mask,
-                                                               batch.kl_div, batch.rec_err):  # sample-wise zip
-                    n_abnormal_pixels = float(torch.sum(segmentation > 0))
-                    n_normal_pixels = float(torch.sum(mask))
-                    if n_normal_pixels == 0:
+                # sample-wise zip
+                for segmentation, mask, kl_div, rec_err, is_lesional, is_empty in zip(batch.segmentation,
+                                                                                      batch.mask,
+                                                                                      batch.kl_div,
+                                                                                      batch.rec_err,
+                                                                                      batch.slice_wise_is_lesional,
+                                                                                      batch.slice_wise_is_empty):
+                    if is_empty:
                         continue
-                    # abnormal_fraction = n_abnormal_pixels / n_normal_pixels
-                    is_abnormal = n_abnormal_pixels > 20  # abnormal_fraction > 0.01  # TODO: Remove hardcoded.
-                    suffix = 'lesional' if is_abnormal else 'healthy'
-                    kl_divs[f' '.join([generator_name, suffix])].append(float(kl_div))
-                    rec_errors[f' '.join([generator_name, suffix])].append(float(rec_err))
-                    elbos[f' '.join([generator_name, suffix])].append(float(rec_err-kl_div))
+                    suffix = 'lesional' if is_lesional else 'healthy'
+                    sub_generator_name = f'{generator_name} {suffix}'
+                    kl_divs[sub_generator_name].append(float(kl_div))
+                    rec_errors[sub_generator_name].append(float(rec_err))
+                    elbos[sub_generator_name].append(float(rec_err - kl_div))
             else:
-                for kl_div, rec_err in zip(batch.kl_div, batch.rec_err):  # sample-wise zip
+                # sample-wise zip
+                for kl_div, rec_err, is_empty in zip(batch.kl_div, batch.rec_err, batch.slice_wise_is_empty):
+                    if is_empty:
+                        continue
                     kl_divs[generator_name].append(float(kl_div))
                     rec_errors[generator_name].append(float(rec_err))
-                    elbos[generator_name].append(float(rec_err-kl_div))
+                    elbos[generator_name].append(float(rec_err - kl_div))
+
+    # Prepare all the arrays and corresponding labels for the histograms
     kld_arrays = []
     kld_labels = []
     rec_arrays = []
@@ -104,21 +111,32 @@ def plot_loss_histograms(output_generators: Iterable[Generator[BatchInferenceRes
     elbo_arrays = []
     elbo_labels = []
     for name, arr in kl_divs.items():
+        if 'healthy' in name and 'lesion' in name:
+            continue
         kld_arrays.append(np.array(arr))
         kld_labels.append(name)
     for name, arr in rec_errors.items():
+        if 'healthy' in name and 'lesion' in name:
+            continue
         rec_arrays.append(np.array(rec_errors[name]))
         rec_labels.append(name)
     for name, arr in elbos.items():
+        if 'healthy' in name and 'lesion' in name:
+            continue
         elbo_arrays.append(np.array(elbos[name]))
         elbo_labels.append(name)
-    kde_bandwidth = kwargs.get('kde_bandwidth', None)
+
+    bandwidth_tuple = kwargs.get('kde_bandwidth', None)
     kwargs.pop('kde_bandwidth')
+    kde_bandwidth, l1_elbo_bandwidth = bandwidth_tuple
     # Add labels if you want to include them in some histogram plot instead of None
     fig1, ax2 = plot_multi_histogram(kld_arrays, labels=kld_labels, xlabel='$D_{KL}$',
-                                     kde_bandwidth=kde_bandwidth[0], **kwargs)
-    fig2, ax2 = plot_multi_histogram(rec_arrays, labels=rec_labels, xlabel='$\ell_{1}$',
-                                     kde_bandwidth=kde_bandwidth[1], **kwargs)
-    fig3, ax3 = plot_multi_histogram(elbo_arrays, labels=elbo_labels, xlabel='$\mathcal{L}$',
-                                     kde_bandwidth=kde_bandwidth[1], **kwargs)
+                                     kde_bandwidth=kde_bandwidth,
+                                     **kwargs)
+    fig2, ax2 = plot_multi_histogram(rec_arrays, labels=None, xlabel='$\ell_{1}$',
+                                     kde_bandwidth=l1_elbo_bandwidth, xmax=2.5,
+                                     **kwargs)
+    fig3, ax3 = plot_multi_histogram(elbo_arrays, labels=None, xlabel='$\mathcal{L}$',
+                                     kde_bandwidth=l1_elbo_bandwidth, xmax=2.5,
+                                     **kwargs)
     return [(fig1, ax2), (fig2, ax2), (fig3, ax3)]

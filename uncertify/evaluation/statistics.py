@@ -18,8 +18,7 @@ LOG = logging.getLogger(__name__)
 
 def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, statistics: Iterable[str],
                                     max_n_batches: int = None, residual_threshold: float = None,
-                                    health_state: str = 'all', only_non_empty: bool = True,
-                                    include_scans: bool = False) -> dict:
+                                    health_state: str = 'all') -> dict:
     """Evaluate slice wise statistics and return aggregated results in a statistics-dict.
 
     Returns
@@ -28,13 +27,14 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     """
     assert all([item in STATISTICS_FUNCTIONS for item in statistics]), f'Need to provide valid ' \
                                                                        f'statistics ({STATISTICS_FUNCTIONS})!'
-    statistics_dict = defaultdict(list)  # statistics are keys and list of scores are values
-    slice_wise_scans = []  # track scans for later visualization
-    slices_keep_mask = []  # the indices mask which decides which slices we keep
+    statistics_dict = defaultdict(list)     # statistics are keys and list of scores are values
+    slice_wise_scans = []                   # track scans for later visualization
+    slices_keep_mask = []                   # the indices mask which decides which slices we keep by index
     slice_wise_seg_maps = []
     slice_wise_masks = []
+    slice_wise_reconstructions = []
     for batch_idx, batch in enumerate(yield_inference_batches(data_loader, model, max_n_batches, residual_threshold,
-                                                              progress_bar_suffix=f'(slice statistics '
+                                                              progress_bar_suffix=f'(aggr. slice statistics '
                                                                                   f'{data_loader.dataset.name})')):
         batch_size, _, _, _ = batch.scan.shape
 
@@ -56,6 +56,8 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
         # Track scans and potentially ground truth segmentation for visualizations later on
         for mask in batch.mask:
             slice_wise_masks.append(mask)
+        for reconstruction in batch.reconstruction:
+            slice_wise_reconstructions.append(reconstruction)
         for scan in batch.scan:
             slice_wise_scans.append(scan)
         if batch.segmentation is not None:
@@ -73,9 +75,11 @@ def aggregate_slice_wise_statistics(model: nn.Module, data_loader: DataLoader, s
     slice_wise_masks = [slice_wise_masks[idx] for idx in keep_slice_indices]
     slice_wise_scans = [slice_wise_scans[idx] for idx in keep_slice_indices]
     slice_wise_seg_maps = [slice_wise_seg_maps[idx] for idx in keep_slice_indices]
+    slice_wise_reconstructions = [slice_wise_reconstructions[idx] for idx in keep_slice_indices]
     statistics_dict.update({'scans': slice_wise_scans})
     statistics_dict.update({'segmentations': slice_wise_seg_maps})
     statistics_dict.update({'masks': slice_wise_masks})
+    statistics_dict.update({'reconstructions': slice_wise_reconstructions})
 
     return statistics_dict
 
@@ -108,14 +112,16 @@ def define_health_state_mask(health_state: str, batch: BatchInferenceResult) -> 
 
 def fit_statistics(statistics_dict: Dict[str, List[float]]) -> Dict[str, gaussian_kde]:
     """For each set of inferred values for a given statistic, fit a KDE on it."""
+    # Initialize emtpy empty KDE func dict
     kde_func_dict = {stat_name: None for stat_name in statistics_dict.keys()
                      if stat_name in STATISTICS_FUNCTIONS.keys()}
 
+    # Filter s.t. only statistics are used which have actual statistics functions, not meta-data stuff
     filtered_statistics_dict = {key: values for key, values in statistics_dict.items()
                                 if key in STATISTICS_FUNCTIONS.keys()}
 
     for stat_name, values in filtered_statistics_dict.items():
-        kde_func_dict[stat_name] = gaussian_kde(values)
+        kde_func_dict[stat_name] = gaussian_kde(values)  # fit a kernel density estimator on the values
     return kde_func_dict
 
 
@@ -170,6 +176,8 @@ def rec_error_entropy_batch_stat(batch: BatchInferenceResult, normalize_kind: st
     # Calculate entropy per slice
     entropy_array = np.empty(batch_size)
     minimal_indices = []
+    if batch.mask is None:  # for datasets which have no mask like noise images
+        batch.mask = torch.ones_like(residual_batch, dtype=torch.bool)
     for idx, (image, mask) in enumerate(zip(residual_batch, batch.mask)):
         if torch.sum(mask) > 10:
             entropy_array[idx] = get_entropy(image[0], mask[0])  # Use first (only) channel

@@ -16,7 +16,8 @@ LOG = logging.getLogger(__name__)
 
 ReturnTuple = namedtuple('OodScores', ['slice_wise_waic_scores', 'slice_wise_is_lesional',
                                        'slice_wise_scans', 'slice_wise_elbos', 'slice_wise_kl_div',
-                                       'slice_wise_rec_err', 'slice_wise_masks', 'slice_wise_segmentations'])
+                                       'slice_wise_rec_err', 'slice_wise_masks', 'slice_wise_segmentations',
+                                       'slice_wise_reconstructions'])
 
 
 def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader, max_n_batches: int = None,
@@ -50,6 +51,8 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
     slice_wise_masks = []
     # Ground truth
     slice_wise_segmentations = []
+    # Reconstruction samples from one model
+    slice_wise_reconstructions = []
 
     global_slice_idx = 0
     for model_idx, model in enumerate(models):  # will yield same input data for every ensemble model
@@ -57,23 +60,25 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
                                                                   progress_bar_suffix=f'WAIC (ensemble {model_idx})')):
             slice_wise_elbos = batch.rec_err - batch.kl_div
             for slice_idx, slice_elbo in enumerate(slice_wise_elbos):
-                if not batch.slice_wise_is_empty[slice_idx]:
-                    slice_wise_elbos_ensemble[global_slice_idx].append(slice_elbo)
-                    if model_idx == 0:
-                        slice_wise_elbo_scores.append(slice_wise_elbos[slice_idx])
-                        slice_wise_kl_div.append(batch.kl_div[slice_idx])
-                        slice_wise_rec_err.append(batch.rec_err[slice_idx])
-                        slice_wise_masks.append(batch.mask[slice_idx])
-                        if batch.segmentation is not None:
-                            slice_wise_segmentations.append(batch.segmentation[slice_idx])
-                            n_abnormal_pixels = float(torch.sum(batch.segmentation[slice_idx] > 0))
-                            slice_wise_is_lesional.append(n_abnormal_pixels > N_ABNORMAL_PIXELS_THRESHOLD_LESIONAL)
-                        else:
-                            slice_wise_is_lesional.append(False)
-                        if return_slices:
-                            slice_wise_scans.append(batch.scan[slice_idx])
-                    # Increase global slice counter when we added a slice to the evaluation list
-                    global_slice_idx += 1
+                # if not batch.slice_wise_is_empty[slice_idx]:
+                slice_wise_elbos_ensemble[global_slice_idx].append(slice_elbo)
+                if model_idx == 0:
+                    slice_wise_elbo_scores.append(slice_wise_elbos[slice_idx])
+                    slice_wise_kl_div.append(batch.kl_div[slice_idx])
+                    slice_wise_rec_err.append(batch.rec_err[slice_idx])
+                    slice_wise_masks.append(batch.mask[slice_idx])
+                    slice_wise_reconstructions.append(batch.reconstruction[slice_idx])
+                    if batch.segmentation is not None:
+                        slice_wise_segmentations.append(batch.segmentation[slice_idx])
+                        n_abnormal_pixels = float(torch.sum(batch.segmentation[slice_idx] > 0))
+                        slice_wise_is_lesional.append(n_abnormal_pixels > N_ABNORMAL_PIXELS_THRESHOLD_LESIONAL)
+                    else:
+                        slice_wise_segmentations.append(torch.zeros_like(batch.scan[slice_idx]))
+                        slice_wise_is_lesional.append(False)
+                    if return_slices:
+                        slice_wise_scans.append(batch.scan[slice_idx])
+                # Increase global slice counter when we added a slice to the evaluation list
+                global_slice_idx += 1
         # Reset the global slice counter when iterating over batches and slices using the next ensemble model
         global_slice_idx = 0
 
@@ -86,7 +91,6 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
         slice_wise_waic_scores.append(waic)
 
     slice_wise_scans = slice_wise_scans if len(slice_wise_scans) > 0 else None
-    slice_wise_segmentations = slice_wise_segmentations if len(slice_wise_segmentations) > 0 else None
 
     return ReturnTuple(slice_wise_waic_scores,
                        slice_wise_is_lesional,
@@ -95,4 +99,5 @@ def sample_wise_waic_scores(models: Iterable[nn.Module], data_loader: DataLoader
                        slice_wise_kl_div,
                        slice_wise_rec_err,
                        slice_wise_masks,
-                       slice_wise_segmentations)
+                       slice_wise_segmentations,
+                       slice_wise_reconstructions)

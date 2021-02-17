@@ -35,7 +35,7 @@ class VGG19Features(object):
                     "block1_conv2", "block2_conv2",
                     "block3_conv2", "block4_conv2",
                     "block5_conv2"]
-        self.layer_names = [l.name for l in self.base_model.layers]
+        self.layer_names = [l.val_set_name for l in self.base_model.layers]
         for k in feature_layers:
             if not k in self.layer_names:
                 raise KeyError(
