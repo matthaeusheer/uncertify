@@ -142,7 +142,8 @@ def create_reconstruction_samples(dataloader: DataLoader, model: nn.Module,
     batch_generator = yield_inference_batches(dataloader, model,
                                               residual_threshold=results.pixel_anomaly_result.best_threshold)
     plot_stacked_scan_reconstruction_batches(batch_generator, plot_n_batches=n_batches, nrow=8,
-                                             save_dir_path=results.img_dir_path, cut_tensor_to=8, cmap='gray')
+                                             save_dir_path=results.img_dir_path, cut_tensor_to=8, cmap='gray',
+                                             mask_background=False, close_fig=True)
 
 
 def run_segmentation_performance(eval_cfg: EvaluationConfig, results: EvaluationResult,
@@ -195,8 +196,11 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
     if not has_segmentation(val_dataloader.dataset):  # TODO: Fix typing issue.
         LOG.warning(f'Skipping anomaly detection for {val_dataloader.dataset.name}')
         return results
-    anomaly_scores = yield_anomaly_predictions(val_dataloader, model,
-                                               eval_config.use_n_batches, results.pixel_anomaly_result.best_threshold)
+    anomaly_scores = yield_anomaly_predictions(val_dataloader,
+                                               model,
+                                               eval_config.use_n_batches,
+                                               results.pixel_anomaly_result.best_threshold,
+                                               use_mask=eval_config.use_masked_loss)
 
     # Step 1 - Pixel-wise anomaly detection
     y_true = anomaly_scores.pixel_wise.y_true
@@ -213,13 +217,14 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
                                  # thresholds=threshs,
                                  title=f'ROC Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
         save_fig(roc_fig, results.plot_dir_path / f'pixel_wise_roc.png')
+        plt.close(roc_fig)
 
         prc_fig = plot_precision_recall_curve(recall, precision, au_prc,
                                               # calculated_threshold=results.pixel_anomaly_result.best_threshold,
                                               # thresholds=threshs,
                                               title=f'PR Curve Pixel-wise Anomaly Detection', figsize=(6, 6))
         save_fig(prc_fig, results.plot_dir_path / 'pixel_wise_prc.png')
-
+        plt.close(prc_fig)
         """ Buggy :-(
         if anomaly_scores.pixel_wise.y_pred is not None:
             conf_matrix = confusion_matrix(anomaly_scores.pixel_wise.y_true, anomaly_scores.pixel_wise.y_pred)
@@ -233,10 +238,14 @@ def run_anomaly_detection_performance(eval_config: EvaluationConfig, model: nn.M
     # Step 2 - Slice-wise anomaly detection
     LOG.info('Calculating slice-wise anomaly detection performance (ROC, PRC)...')
 
+    reverse_score_map = {'REC_TERM': False, 'KL_TERM': False, 'ELBO': False}  # whether to negate the scores
+
     for criteria in SliceWiseCriteria:
         y_true = anomaly_scores.slice_wise[criteria.name].anomaly_score.y_true
         y_pred_proba = anomaly_scores.slice_wise[criteria.name].anomaly_score.y_pred_proba
 
+        if reverse_score_map[criteria.name]:
+            y_pred_proba = [-val for val in y_pred_proba]
         fpr, tpr, _, au_roc = calculate_roc(y_true, y_pred_proba)
         precision, recall, _, au_prc = calculate_prc(y_true, y_pred_proba)
         anomaly_result_for_criteria = SliceAnomalyDetectionResult()
@@ -308,8 +317,10 @@ def run_ood_detection_performance(models_or_model: List[nn.Module], train_datalo
 
             # When computing the WAIC score, we also add the elbo, kl_div and rec_error scores to the results :-)
             for sub_metric in ['waic', 'elbo', 'kl_div', 'rec_err']:
-                ood_dict = {'ood': {'ood_scores': [], 'is_lesional': []},
-                            'in_distribution': {'ood_scores': [], 'is_lesional': []}}
+                ood_dict = {'ood': {'ood_scores': [],
+                                    'is_lesional': []},
+                            'in_distribution': {'ood_scores': [],
+                                                'is_lesional': []}}
                 for ood_key in ['ood', 'in_distribution']:
                     if sub_metric == 'waic':
                         scores = ood_results[ood_key].slice_wise_waic_scores
@@ -330,19 +341,23 @@ def run_ood_detection_performance(models_or_model: List[nn.Module], train_datalo
                                                               eval_cfg.ood_config.dose_statistics,
                                                               max_n_batches=use_n_batches)
             kde_func_dict = fit_statistics(statistics_dict)
-            ood_dict = {'ood': {'ood_scores': [], 'is_lesional': []},
-                        'in_distribution': {'ood_scores': [], 'is_lesional': []}}
+            ood_dict = {'ood': {'ood_scores': [],
+                                'is_lesional': []},
+                        'in_distribution': {'ood_scores': [],
+                                            'is_lesional': []}}
             # Then do DoSE score inference using the KDE fit functions for in- and out-of-distribution data
             for ood_key, dataloader in zip(['ood', 'in_distribution'], [val_dataloader, train_dataloader]):
-                dose_scores, dose_kde_dict = full_pipeline_slice_wise_dose_scores(train_dataloader,
-                                                                                  dataloader,
-                                                                                  model,
-                                                                                  eval_cfg.ood_config.dose_statistics,
-                                                                                  use_n_batches,
-                                                                                  kde_func_dict)
+                dose_scores, dose_kde_dict, test_stat_dict = full_pipeline_slice_wise_dose_scores(
+                    train_dataloader,
+                    dataloader,
+                    model,
+                    eval_cfg.ood_config.dose_statistics,
+                    use_n_batches,
+                    kde_func_dict
+                )
                 # high DoSE score is in-distribution, thus revert
                 ood_dict[ood_key]['ood_scores'] = dose_scores
-                ood_dict[ood_key]['is_lesional'] = dose_kde_dict['is_lesional']
+                ood_dict[ood_key]['is_lesional'] = test_stat_dict['is_lesional']
             # Make visible in results which statistics have been used
             metric_name = '_'.join([metric_name, '-'.join(eval_cfg.ood_config.dose_statistics)])
             calculate_and_update_ood_performance(metric_name, ood_dict, eval_cfg, results, invert_scores=True)

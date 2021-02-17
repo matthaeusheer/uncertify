@@ -68,19 +68,20 @@ class AnomalyInferenceScores:
     slice_wise: Dict[str, SliceWiseAnomalyScores] = field(default_factory=dict)
 
 
-N_PIXEL_LESIONAL_THRESHOLD = 20
+N_PIXEL_LESIONAL_THRESHOLD = 50
 
 
 def yield_inference_batches(data_loader: DataLoader,
                             trained_model: torch.nn.Module,
                             max_batches: int = None,
                             residual_threshold: float = None,
-                            residual_fn: Callable = residual_l1,
+                            residual_fn: Callable = residual_l1_max,
                             get_batch_fn: Callable = lambda batch: batch['scan'],
-                            median_filter: MedianPool2d = MedianPool2d(kernel_size=5, padding=2),
-                            mask_eroder: BinaryErosion = BinaryErosion(num_iterations=3),
+                            median_filter: MedianPool2d = None,  # MedianPool2d(kernel_size=5, padding=2),
+                            mask_eroder: BinaryErosion = None,  # BinaryErosion(num_iterations=3),
                             progress_bar_suffix: str = '',
-                            manual_seed_val: int = None) -> Generator[BatchInferenceResult, None, None]:
+                            manual_seed_val: int = None,
+                            use_mask: bool = True) -> Generator[BatchInferenceResult, None, None]:
     """Run inference on batches from a data loader on a trained model.
 
     Arguments:
@@ -94,6 +95,7 @@ def yield_inference_batches(data_loader: DataLoader,
         mask_eroder: erode brain mask inwards to get rid of false positive pixel anomalies on the brain edges
         progress_bar_suffix: possibility to add some informative stuff to the progress bar during inference
         manual_seed_val: resets the random seed for torch
+        use_mask: if True, will use the mask during inference, that is the loss is computed only on the masked region
 
     Returns:
         result: a BatchInferenceResult dataclass container holding all results from the batch inference
@@ -111,7 +113,11 @@ def yield_inference_batches(data_loader: DataLoader,
         # Run actual inference for batch
         trained_model.eval()
         with torch.no_grad():
-            inference_result = trained_model(scan_batch, batch['mask'] if 'mask' in batch.keys() else None)
+            if use_mask:
+                potential_mask = batch['mask'] if 'mask' in batch.keys() else None
+            else:
+                potential_mask = None
+            inference_result = trained_model(scan_batch, potential_mask)
         rec_batch, mu, log_var, total_loss, mean_kld_div, mean_rec_err, kl_div, rec_err, latent_code = inference_result
 
         if torch.isnan(rec_batch).any():
@@ -165,7 +171,8 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                               trained_model: torch.nn.Module,
                               max_n_batches: int = None,
                               residual_threshold: float = None,
-                              residual_fn: Callable = residual_l1_max) -> AnomalyInferenceScores:
+                              residual_fn: Callable = residual_l1_max,
+                              use_mask: bool = True) -> AnomalyInferenceScores:
     """Computes and yields AnomalyInferenceScores, that is, pixel- and slice-wise anomaly prediction scores.
 
     For Args: see yield_reconstruction_batches. Similar.
@@ -182,7 +189,8 @@ def yield_anomaly_predictions(data_loader: DataLoader,
                                                               trained_model=trained_model,
                                                               max_batches=max_n_batches,
                                                               residual_threshold=residual_threshold,
-                                                              residual_fn=residual_fn)):
+                                                              residual_fn=residual_fn,
+                                                              use_mask=use_mask)):
         with torch.no_grad():
             # Step 1 - Pixel-wise
             # Get ground truth and anomaly score / residual (higher residual means higher anomaly score)

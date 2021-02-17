@@ -4,8 +4,10 @@ import torch
 import torchvision
 import numpy as np
 
+from uncertify.visualization.dose import LOG
 from uncertify.visualization.histograms import plot_multi_histogram
-from uncertify.utils.python_helpers import get_indices_of_n_largest_items, get_indices_of_n_smallest_items
+from uncertify.utils.python_helpers import get_indices_of_n_largest_items, get_indices_of_n_smallest_items, \
+    print_dict_tree, get_idx_of_closest_value
 from uncertify.utils.python_helpers import get_idx_of_closest_value
 from uncertify.utils.tensor_ops import normalize_to_0_1
 from uncertify.evaluation.utils import mask_background_to_zero
@@ -159,3 +161,82 @@ def plot_samples_close_to_score(ood_dict: dict, dataset_name: str, min_score: fl
         if show_ground_truth:
             imshow_grid(lesional_segmentations_grid, one_channel=True, figsize=(12, 8),
                         title=f'Lesional Ground Truth {dataset_name} {min_score}-{max_score}', axis='off')
+
+
+def plot_ood_samples_over_range(metrics_ood_dict: dict, dataset_name: str, mode: str, stat_type: str,
+                                start_val: float, end_val: float, n_values: int, **plt_kwargs) -> None:
+    """Given a metrics_ood_dict, whose keys have to be in the format score -> dataset -> ..., plot the statistic value
+    plot a grid of images starting from top left to bottom right in rows left to right with increasing dose kde
+    value.
+    """
+    if mode not in ['dose_kde', 'dose_stat', 'waic']:
+        raise ValueError(f'Chose the mode, such that it is either "dose_kde" or "raw" (statistic value).')
+    if 'dose' in mode:
+        main_mode = 'dose'
+    else:
+        main_mode = 'waic'
+    try:
+        ood_dict = metrics_ood_dict[main_mode][dataset_name]
+        if main_mode == 'dose':
+            healthy_values = ood_dict[f'{mode}_healthy'][stat_type]
+            lesional_values = ood_dict[f'{mode}_lesional'][stat_type]
+        elif main_mode == 'waic':
+            healthy_values = ood_dict[f'healthy']
+            lesional_values = ood_dict[f'lesional']
+        else:
+            raise KeyError(f'main_mode not supported')
+        healthy_scans = ood_dict['healthy_scans']
+        lesional_scans = ood_dict['lesional_scans']
+        healthy_recs = ood_dict['healthy_reconstructions']
+        lesional_recs = ood_dict['lesional_reconstructions']
+    except KeyError as err:
+        print(f'The metrics_ood_dict does not have the correct keys to generate your plot.'
+              f'Given:\n{print_dict_tree(metrics_ood_dict)}')
+        raise err
+
+    mode_description = f'{main_mode} {stat_type if main_mode=="dose" else ""}'
+    LOG.info(f'Plotting scans with {stat_type} from {start_val:.1f}-{end_val:.1f}.')
+    LOG.info(
+        f'Min/max {mode_description} from all healthy scans is: {min(healthy_values):.1f}/{max(healthy_values):.1f}')
+    LOG.info(
+        f'Min/max {mode_description} from all lesional scans is: {min(lesional_values):.1f}/{max(lesional_values):.1f}')
+    # Will fill up two tensors with healthy and lesional images
+    healthy_img_batch = torch.zeros(size=[n_values, 1, 128, 128])
+    lesional_img_batch = torch.zeros(size=[n_values, 1, 128, 128])
+    healthy_img_rec_batch = torch.zeros(size=[n_values, 1, 128, 128])
+    lesional_img_rec_batch = torch.zeros(size=[n_values, 1, 128, 128])
+
+    # Define reference values and initialize actual values of picked images
+    ref_values = np.linspace(start_val, end_val, n_values)
+    picked_healthy_values = []
+    picked_lesional_values = []
+
+    for img_idx, ref_val in enumerate(ref_values):
+        closest_healthy_idx = get_idx_of_closest_value(healthy_values, value=ref_val)
+        closest_lesional_idx = get_idx_of_closest_value(lesional_values, value=ref_val)
+
+        lesional_img = lesional_scans[closest_lesional_idx]
+        healthy_img = healthy_scans[closest_healthy_idx]
+        lesional_rec_img = lesional_recs[closest_lesional_idx]
+        healthy_rec_img = healthy_recs[closest_healthy_idx]
+
+        lesional_img_batch[img_idx] = lesional_img
+        healthy_img_batch[img_idx] = healthy_img
+        lesional_img_rec_batch[img_idx] = lesional_rec_img
+        healthy_img_rec_batch[img_idx] = healthy_rec_img
+        picked_healthy_values.append(healthy_values[closest_healthy_idx])
+        picked_lesional_values.append(lesional_values[closest_lesional_idx])
+
+    nrow = plt_kwargs.get('nrow', 8)
+    healthy_grid = torchvision.utils.make_grid(healthy_img_batch, nrow=nrow)
+    healthy_rec_grid = torchvision.utils.make_grid(healthy_img_rec_batch, nrow=nrow)
+
+    lesional_grid = torchvision.utils.make_grid(lesional_img_batch, nrow=nrow)
+    lesional_rec_grid = torchvision.utils.make_grid(lesional_img_rec_batch, nrow=nrow)
+
+    imshow_grid(healthy_grid, title=f'Healthy {mode_description} [{start_val:.1f}, {end_val:.1f}]', **plt_kwargs)
+    imshow_grid(healthy_rec_grid, title=f'Healthy {mode_description} [{start_val:.1f}, {end_val:.1f}]', **plt_kwargs)
+    imshow_grid(lesional_grid, title=f'Lesional {mode_description} [{start_val:.1f}, {end_val:.1f}]', **plt_kwargs)
+    imshow_grid(lesional_rec_grid, title=f'Lesional {mode_description} [{start_val:.1f}, {end_val:.1f}]', **plt_kwargs)
+    LOG.info(f'Healthy values:\n{picked_healthy_values}')
+    LOG.info(f'Healthy values:\n{picked_lesional_values}')

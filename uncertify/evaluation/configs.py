@@ -33,7 +33,7 @@ class PerformanceEvaluationConfig:
     max_val: float = 1.5
     num_values: int = 10
     do_iou: bool = False
-    do_multiple_thresholds: bool = True
+    do_multiple_thresholds: bool = False
 
 
 @dataclass
@@ -52,6 +52,7 @@ class EvaluationConfig:
     train_dataset_config: PreprocessConfig = None
     test_dataset_config: PreprocessConfig = None
     do_plots: bool = False
+    use_masked_loss: bool = True
 
 
 @dataclass

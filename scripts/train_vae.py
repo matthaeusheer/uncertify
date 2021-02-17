@@ -229,7 +229,7 @@ def main(args: argparse.Namespace) -> None:
     # Setup OOD dataloaders to check against during training
     ood_dataloaders = []
     for hdf5_set_path in args.ood_set_paths:
-        name = hdf5_set_path.name
+        name = hdf5_set_path.val_set_name
         if 'brats' in name:
             transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
             dataset_type = DatasetType.BRATS17

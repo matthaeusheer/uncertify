@@ -11,10 +11,6 @@ LOG = logging.getLogger(__name__)
 
 DEFAULT_SAVE_FIG_KWARGS = dict(dpi=600, transparent=True, bbox_inches='tight')
 
-# matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
-matplotlib.rcParams.update({'font.size': 22})
-plt.rcParams['axes.linewidth'] = 2
-
 
 def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
     """Create a default matplotlib figure and return the figure and ax object.
@@ -23,13 +19,19 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         figsize: Tuple(float, float), width and height in inches, defaults to (6.4, 4.8)
         title: str, sets the center title for the figures axes
     """
+    matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
+    matplotlib.rcParams.update({'font.size': 22, 'legend.fontsize': 12})
+    font = {'weight': 'bold'}
+    matplotlib.rc('font', **font)
+
+    plt.rcParams['axes.linewidth'] = 2
     if 'figsize' in kwargs:
         fig = plt.figure(figsize=kwargs.get('figsize'))
     else:
         fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
     if 'title' in kwargs:
-        ax.set_title(kwargs.get('title'))
+        ax.set_title(kwargs.get('title'), pad=15)
     if 'aspect' in kwargs:
         ax.set_aspect(kwargs.get('aspect'))
     else:
@@ -40,8 +42,20 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         ax.set_xlabel(kwargs.get('xlabel'))
     if 'ylabel' in kwargs:
         ax.set_ylabel(kwargs.get('ylabel'))
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
+    if 'xmin' in kwargs:
+        ax.set_xlim(left=kwargs.get('xmin'))
+    if 'ymin' in kwargs:
+        ax.set_ylim(left=kwargs.get('ymin'))
+    if 'xmax' in kwargs:
+        ax.set_xlim(right=kwargs.get('xmax'))
+    if 'ymax' in kwargs:
+        ax.set_ylim(right=kwargs.get('ymax'))
+
+    ax.xaxis.set_tick_params(which='major', size=10, width=2, direction='in', top='off')
+    ax.xaxis.set_tick_params(which='minor', size=7, width=2, direction='in', top='off')
+    ax.yaxis.set_tick_params(which='major', size=10, width=2, direction='in', right='off')
+    ax.yaxis.set_tick_params(which='minor', size=7, width=2, direction='in', right='off')
+
     plt.tight_layout()
     return fig, ax
 
@@ -92,4 +106,4 @@ def save_fig(fig: plt.Figure, save_path: Path, create_dirs: bool = False, **kwar
             return
     DEFAULT_SAVE_FIG_KWARGS.update(kwargs)
     fig.savefig(save_path, **DEFAULT_SAVE_FIG_KWARGS)
-    LOG.info(f'Saved figure at {save_path} with settings: {DEFAULT_SAVE_FIG_KWARGS}')
+    LOG.debug(f'Saved figure at {save_path} with settings: {DEFAULT_SAVE_FIG_KWARGS}')

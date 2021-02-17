@@ -61,7 +61,7 @@ def calculate_mean_false_positive_rate(threshold: float, data_loader: DataLoader
                 LOG.info(f'Threshold: {threshold:.2f} - {batch_idx + 1} of '
                          f'{n_batches_per_thresh if n_batches_per_thresh is not None else "all"} batches done.')
     mean_fpr = float(np.mean(per_batch_fpr))
-    LOG.info(f'Mean FPR: {mean_fpr:.2f} for t={threshold:.2f} (use_ground_truth=False)')
+    LOG.info(f'Mean FPR: {mean_fpr:.3f} for t={threshold:.3f} (use_ground_truth=False)')
     return mean_fpr
 
 
