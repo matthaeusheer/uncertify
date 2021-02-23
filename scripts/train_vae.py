@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '-d',
         '--dataset',
-        choices=['mnist', 'camcan', 'fashion'],
+        choices=['mnist', 'camcan', 'fashion', 'brats'],
         default='camcan',
         help='Which dataset to use for training.')
     parser.add_argument(
@@ -202,6 +202,7 @@ def main(args: argparse.Namespace) -> None:
     store_dict(make_args_json_serializable(args), Path(logger.log_dir), 'hyper_parameters.json')
 
     # Setup training and validation data
+    shuffle_val = False
     if args.dataset == 'mnist':
         transform = MNIST_DEFAULT_TRANSFORM
         dataset_type = DatasetType.MNIST
@@ -211,6 +212,10 @@ def main(args: argparse.Namespace) -> None:
     elif args.dataset == 'fashion':
         transform = MNIST_DEFAULT_TRANSFORM
         dataset_type = DatasetType.FASHION_MNIST
+    elif args.dataset == 'brats':
+        transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
+        dataset_type = DatasetType.BRATS17
+        shuffle_val = True
     else:
         raise ValueError(f'Dataset arg "{args.dataset}" not supported.')
 
@@ -220,7 +225,12 @@ def main(args: argparse.Namespace) -> None:
                                                           val_set_path=args.val_set_path,
                                                           transform=transform,
                                                           num_workers=args.num_workers,
-                                                          shuffle_train=True)
+                                                          shuffle_train=True,
+                                                          shuffle_val=shuffle_val)
+    # Nasty hack
+    if args.dataset == 'brats':
+        train_dataloader = val_dataloader
+
     # Setup Beta-Annealing config
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,
                                       args.final_train_step, args.cycle_size, args.cycle_size_const_fraction)
@@ -229,7 +239,7 @@ def main(args: argparse.Namespace) -> None:
     # Setup OOD dataloaders to check against during training
     ood_dataloaders = []
     for hdf5_set_path in args.ood_set_paths:
-        name = hdf5_set_path.val_set_name
+        name = hdf5_set_path.name
         if 'brats' in name:
             transform = BRATS_CAMCAN_DEFAULT_TRANSFORM
             dataset_type = DatasetType.BRATS17
