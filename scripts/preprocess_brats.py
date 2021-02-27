@@ -14,7 +14,7 @@ import add_uncertify_to_path
 from uncertify.data.preprocessing.preprocessing_config import BratsConfig, preprocess_config_factory
 from uncertify.data.preprocessing.processing_funcs import transform_images_brats
 from uncertify.data.preprocessing.processing_funcs import normalize_images
-from uncertify.data.preprocessing.processing_funcs import run_histogram_matching
+from uncertify.data.preprocessing.processing_ncs import run_histogram_matching
 from uncertify.data.preprocessing.processing_funcs import create_masks_camcan
 from uncertify.data.preprocessing.processing_funcs import get_indices_to_keep
 from uncertify.data.preprocessing.processing_funcs import create_hdf5_file_name

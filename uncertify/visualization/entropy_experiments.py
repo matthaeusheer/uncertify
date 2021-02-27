@@ -102,24 +102,36 @@ def plot_image_and_entropy(image: torch.Tensor, mask: torch.Tensor = None, **kwa
 
 
 def plot_images_and_entropy(images: List[torch.Tensor], masks: List[torch.Tensor] = None,
-                            entropy_array=None, **kwargs) -> None:
+                            entropy_array=None, **kwargs) -> plt.Figure:
     """Plot a grid of images and display entropies."""
     n_images = len(images)
     assert math.isqrt(n_images), f'Number of images should be square to arrange in grid.'
-    fig, axes = plt.subplots(nrows=int(math.sqrt(n_images)), ncols=int(math.sqrt(n_images)),
+    if 'nrows' in kwargs and 'ncols' in kwargs:
+        nrows, ncols = kwargs.get('nrows'), kwargs.get('ncols')
+    else:
+        nrows = int(math.sqrt(n_images))
+        ncols = int(math.sqrt(n_images))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols,
                              figsize=kwargs.get('figsize'))
-    for idx, (image, ax) in tqdm(enumerate(zip(images, axes.reshape(-1))), desc=f'Plotting entropies', initial=1,
-                                 total=n_images):
-        mask = masks[idx] if masks is not None else torch.ones_like(image).type(torch.BoolTensor)
+    subplot_idx = 0
+    flat_axes = axes.reshape(-1)
+    for image_idx, image in tqdm(enumerate(images), desc=f'Plotting entropies', initial=0):
+        mask = masks[image_idx] if masks is not None else torch.ones_like(image).type(torch.BoolTensor)
         if entropy_array is None:
             entropy = get_entropy(image, mask)
         else:
-            entropy = entropy_array[idx]
-        ax.imshow(image, cmap='gray', vmin=kwargs.get('vmin'), vmax=kwargs.get('vmax'))
-        ax.axis('off')
-        ax.annotate(f'{entropy:.2f}', (10, 20), color='red', fontsize=12)
+            entropy = entropy_array[image_idx]
+        if entropy == 0.0:
+            continue
+        else:
+            flat_axes[subplot_idx].imshow(image, cmap='gray', vmin=kwargs.get('vmin'), vmax=kwargs.get('vmax'))
+            flat_axes[subplot_idx].axis('off')
+            flat_axes[subplot_idx].annotate(f'{entropy:.2f}', (15, 20), color='white', fontsize=20)
+            subplot_idx += 1
+        if subplot_idx == nrows * ncols:
+            break
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def plot_entropy_segmentations(input_batch: dict, add_circles: bool = False, add_gauss_blobs: bool = False,

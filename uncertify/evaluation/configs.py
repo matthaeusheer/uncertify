@@ -17,8 +17,8 @@ class PixelThresholdSearchConfig:
     # Accepted false positive rate when searching for threshold
     accepted_fpr: float = 0.05
     # Min, max, and number of values for fpr vs threshold calculations for plotting
-    min_val: float = 0.5
-    max_val: float = 2.0
+    min_val: float = 0.1
+    max_val: float = 1.0
     num_values: int = 10
     # Subsequent Golden Section Search parameters
     gss_lower_val: float = 0.0

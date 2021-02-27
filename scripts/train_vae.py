@@ -172,7 +172,7 @@ def get_trainer_kwargs(args: argparse.Namespace) -> dict:
                       'gpus': 1,
                       'distributed_backend': 'ddp',
                       # 'limit_train_batches': 0.2,
-                      # 'limit_val_batches': 0.1,
+                      'limit_val_batches': 0.12,
                       'max_epochs': args.max_n_epochs,
                       'profiler': True,
                       'fast_dev_run': args.fast_dev_run}
@@ -219,17 +219,34 @@ def main(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f'Dataset arg "{args.dataset}" not supported.')
 
-    train_dataloader, val_dataloader = dataloader_factory(dataset_type,
-                                                          batch_size=args.batch_size,
-                                                          train_set_path=args.train_set_path,
-                                                          val_set_path=args.val_set_path,
-                                                          transform=transform,
-                                                          num_workers=args.num_workers,
-                                                          shuffle_train=True,
-                                                          shuffle_val=shuffle_val)
-    # Nasty hack
+    # Nasty, nasty hack
     if args.dataset == 'brats':
-        train_dataloader = val_dataloader
+        _, train_dataloader = dataloader_factory(DatasetType.BRATS17,
+                                                 batch_size=args.batch_size,
+                                                 train_set_path=args.train_set_path,
+                                                 val_set_path=args.train_set_path,  # nasty
+                                                 transform=transform,
+                                                 num_workers=args.num_workers,
+                                                 shuffle_train=True,
+                                                 shuffle_val=shuffle_val)
+
+        _, val_dataloader = dataloader_factory(DatasetType.CAMCAN,  # need to give path to CamCAN val set
+                                               batch_size=args.batch_size,
+                                               train_set_path=args.train_set_path,
+                                               val_set_path=args.val_set_path,
+                                               transform=transform,
+                                               num_workers=args.num_workers,
+                                               shuffle_train=True,
+                                               shuffle_val=False)
+    else:
+        train_dataloader, val_dataloader = dataloader_factory(dataset_type,
+                                                              batch_size=args.batch_size,
+                                                              train_set_path=args.train_set_path,
+                                                              val_set_path=args.val_set_path,
+                                                              transform=transform,
+                                                              num_workers=args.num_workers,
+                                                              shuffle_train=True,
+                                                              shuffle_val=shuffle_val)
 
     # Setup Beta-Annealing config
     beta_config = beta_config_factory(args.annealing, args.beta_final, args.beta_start,

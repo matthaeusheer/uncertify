@@ -2,7 +2,9 @@ import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import matplotlib
 
+from uncertify.visualization.plotting import set_matplotlib_rc
 from uncertify.common import DATA_DIR_PATH
 
 from typing import List
@@ -28,9 +30,16 @@ def do_pair_plot_statistics(statistics_dict: dict, dose_statistics: List[str],
         dataset_name: name of the dataset used for file naming
         hue: which column in the dataframe to use as hue
     """
+    sns.set_style({"xtick.direction": "in", "ytick.direction": "in",
+                   "xtick.major.size": 10, "ytick.major.size": 10,
+                   "xtick.minor.size": 7, "ytick.minor.size": 7})
     stat_df = pd.DataFrame(statistics_dict)
+    set_matplotlib_rc()
+    matplotlib.rcParams.update({'font.size': 18, 'legend.fontsize': 16})
+
     grid = sns.pairplot(stat_df, vars=dose_statistics, corner=True, plot_kws={"s": 10}, palette='viridis',
                         hue=hue, diag_kws={'shade': False}, diag_kind='kde')
+    grid.fig.set_size_inches(7, 7)
     grid.map_lower(sns.kdeplot, shade=True, thresh=0.05, alpha=0.7)
 
     if hue is not None:
@@ -48,8 +57,8 @@ def do_pair_plot_statistics(statistics_dict: dict, dose_statistics: List[str],
                 ax.set_xlabel(LABEL_MAP[old_xlabel])
             if old_ylabel in LABEL_MAP:
                 ax.set_ylabel(LABEL_MAP[old_ylabel])
+
     grid.tight_layout()
     grid.savefig(DATA_DIR_PATH / 'plots' / f'dose_pairplot_{dataset_name}.png')
+
     return grid
-
-
