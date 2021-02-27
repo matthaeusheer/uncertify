@@ -8,8 +8,17 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 LOG = logging.getLogger(__name__)
 
-
 DEFAULT_SAVE_FIG_KWARGS = dict(dpi=600, transparent=True, bbox_inches='tight')
+
+
+def set_matplotlib_rc() -> None:
+    """Basically set font settings etc. for nice looking figures."""
+    matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
+    matplotlib.rcParams.update({'font.size': 22, 'legend.fontsize': 15})
+    font = {'weight': 'bold'}
+    matplotlib.rc('font', **font)
+
+    plt.rcParams['axes.linewidth'] = 2
 
 
 def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
@@ -19,12 +28,7 @@ def setup_plt_figure(**kwargs) -> (plt.Figure, plt.Axes):
         figsize: Tuple(float, float), width and height in inches, defaults to (6.4, 4.8)
         title: str, sets the center title for the figures axes
     """
-    matplotlib.rcParams.update({'text.usetex': False, 'font.family': 'stixgeneral', 'mathtext.fontset': 'stix', })
-    matplotlib.rcParams.update({'font.size': 22, 'legend.fontsize': 12})
-    font = {'weight': 'bold'}
-    matplotlib.rc('font', **font)
-
-    plt.rcParams['axes.linewidth'] = 2
+    set_matplotlib_rc()
     if 'figsize' in kwargs:
         fig = plt.figure(figsize=kwargs.get('figsize'))
     else:

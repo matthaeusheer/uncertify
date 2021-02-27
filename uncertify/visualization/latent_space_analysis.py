@@ -198,9 +198,11 @@ def plot_ring_samples() -> None:
     plt.show()
 
 
-def plot_gaussian_annulus_distribution(latent_space_dims: int = 128, n_samples: int = 1000) -> None:
+def plot_gaussian_annulus_distribution(latent_space_dims: int = 128, n_samples: int = 1000) -> plt.Figure:
     latent_samples = torch.normal(mean=0, std=torch.ones((n_samples, latent_space_dims,)))
     norms = torch.norm(latent_samples, dim=1).numpy()
 
-    plot_multi_histogram([norms], ['Distance to origin'], show_data_ticks=True, show_histograms=True)
+    fig, ax = plot_multi_histogram([norms], ['Distance to origin'], show_data_ticks=True, show_histograms=True)
+    ax.set_xticks([10, 11.3, 13])
+    return fig
 

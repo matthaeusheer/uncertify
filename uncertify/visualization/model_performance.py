@@ -50,6 +50,10 @@ def setup_roc_prc_fig(mode: str, **kwargs) -> Tuple[plt.Figure, plt.Axes]:
     fig, ax = setup_plt_figure(xlabel=x_labels[mode], ylabel=y_labels[mode], **kwargs)
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
+    ax.set_xticks([0, 0.5, 1])
+    ax.set_yticks([0, 0.5, 1])
+    ax.tick_params(axis='x', pad=10)
+    ax.tick_params(axis='y', pad=7)
 
     if mode == 'roc':
         ax.plot([0, 1], [0, 1], linewidth=1, linestyle='--', color='gray')

@@ -2,6 +2,8 @@ import math
 import logging
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
+
 from uncertify.models.utils import generalized_logistic_curve
 from uncertify.visualization.plotting import setup_plt_figure
 
@@ -132,8 +134,8 @@ def decay_annealing(train_step: int, final_train_step: int,
         return beta_final
 
 
-def plot_annealing_schedules(n_train_steps: int, cycle_size: int):
-    fig, ax = setup_plt_figure(figsize=(12, 6), title='Annealing schedules compared',
+def plot_annealing_schedules(n_train_steps: int, cycle_size: int) -> plt.Figure:
+    fig, ax = setup_plt_figure(figsize=(11, 5), title='Annealing schedules compared',
                                xlabel='Training step', ylabel=r'$\beta$')
     monotonic_betas = [monotonic_annealing(train_step, n_train_steps // 2) for train_step in range(n_train_steps)]
     ax.plot(range(n_train_steps), monotonic_betas, '-', linewidth=2, label='monotonic')
@@ -148,4 +150,5 @@ def plot_annealing_schedules(n_train_steps: int, cycle_size: int):
                    for train_step in range(n_train_steps)]
     ax.plot(range(n_train_steps), decay_betas, '-', linewidth=2, label='exponential decay')
 
-    ax.legend()
+    ax.legend(frameon=False)
+    return fig

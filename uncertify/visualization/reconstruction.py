@@ -75,6 +75,7 @@ def plot_stacked_scan_reconstruction_batches(batch_generator: Generator[BatchInf
             print_scipy_stats_description(describe, 'normalized_grid')
             fig, ax = imshow_grid(grid, one_channel=True, vmax=1.0, vmin=0.0, plt_show=False, **kwargs)
             ax.set_axis_off()
+            plt.show()
             if save_dir_path is not None:
                 img_file_name = f'batch_{batch_idx}.png'
                 save_fig(fig, save_dir_path / img_file_name)
