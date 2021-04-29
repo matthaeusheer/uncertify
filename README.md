@@ -1,7 +1,7 @@
 # ![](assets/uncertify.gif)
 [![Build Status](https://travis-ci.com/matthaeusheer/uncertify.svg?token=bUEVgaJ1xLP8HNxuqXvL&branch=master)](https://travis-ci.com/matthaeusheer/uncertify)
 
-This repository holds the code for our paper [The OOD Detection Blindspot of Unsupervised Lesion Detection](https://openreview.net/forum?id=ZDD2TbZn7X1) which has been accepted for the [MIDL](url) (Medical Imaging with Deep Learning) 2021 conference. This project has been carried out in the the scope of a Masters Thesis at the [Computer Vision Lab](https://vision.ee.ethz.ch/) at [ETHZ](https://ethz.ch/en.html).
+This repository holds the code for our paper [The OOD Detection Blindspot of Unsupervised Lesion Detection](https://openreview.net/forum?id=ZDD2TbZn7X1) which has been accepted for the [https://2021.midl.io/](url) (Medical Imaging with Deep Learning) 2021 conference. This project has been carried out in the the scope of a Masters Thesis at the [Computer Vision Lab](https://vision.ee.ethz.ch/) at [ETHZ](https://ethz.ch/en.html).
 
 
 <!-- TABLE OF CONTENTS -->
