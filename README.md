@@ -17,7 +17,7 @@ This repository holds the code for our paper [The OOD Detection Blindspot of Uns
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
-Coming soon.
+Pleaser refer to the MIDL 2021 publication [The OOD Detection Blindspot of Unsupervised Lesion Detection](https://openreview.net/forum?id=ZDD2TbZn7X1).
 
 <!-- GETTING STARTED -->
 ## Getting Started
@@ -61,5 +61,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 
 <!-- CONTACT -->
-## Contact
+## Contributors
 Matthäus Heer - maheer@ethz.ch / matthaeus.heer@uzh.ch
+Janis Postels
+Xiaoran Chen
+Shadi Albarqouni
