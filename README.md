@@ -62,7 +62,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- CONTACT -->
 ## Contributors
-Matthäus Heer - maheer@ethz.ch / matthaeus.heer@uzh.ch
-Janis Postels
-Xiaoran Chen
-Shadi Albarqouni
+Matthäus Heer, Physics Institute, University of Zurich
+Janis Postels, Computer Vision Lab, ETH Zurich
+Xiaoran Chen, Computer Vision Lab, ETH Zurich
+Shadi Albarqouni, Helmholtz AI, Helmholtz Zentrum M ̈unchen,
